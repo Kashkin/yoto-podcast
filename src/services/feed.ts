@@ -11,7 +11,7 @@ export function parseFeed(xml: string): FeedEpisode[] {
   const channel = parsed?.rss?.channel;
   if (!channel) return [];
 
-  const items = Array.isArray(channel.item) ? channel.item : [channel.item];
+  const items = channel.item === undefined ? [] : Array.isArray(channel.item) ? channel.item : [channel.item];
 
   return items.map((item: Record<string, unknown>, i: number) => ({
     title: String(item.title ?? ''),

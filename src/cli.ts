@@ -141,7 +141,7 @@ program
   .requiredOption('--name <name>', 'Podcast name')
   .option('--card <cardId>', 'Yoto card ID')
   .action(async (options) => {
-    await runBackfill(options);
+    await runBackfill(options, { configPath: CONFIG_PATH, tokensPath: TOKENS_PATH });
   });
 
 // --- Make Your Own cards ---

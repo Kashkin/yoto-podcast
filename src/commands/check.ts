@@ -33,8 +33,14 @@ export async function checkPodcast(
     errors: [],
   };
 
-  // Fetch feed
-  const res = await fetch(podcast.feedUrl);
+  // Fetch feed. An unreachable feed is reported, not thrown, so the other podcasts still run.
+  let res: Response;
+  try {
+    res = await fetch(podcast.feedUrl);
+  } catch (err) {
+    result.errors.push(`Failed to fetch feed: ${err instanceof Error ? err.message : String(err)}`);
+    return result;
+  }
   if (!res.ok) {
     result.errors.push(`Failed to fetch feed: ${res.status}`);
     return result;

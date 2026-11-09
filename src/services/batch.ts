@@ -51,7 +51,7 @@ export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, in
 export async function uploadTracks(
   items: { title: string; path: string }[],
   upload: (path: string, log: (msg: string) => void) => Promise<UploadedTrack>,
-  opts: { concurrency?: number; log?: (msg: string) => void } = {}
+  opts: { concurrency?: number; log?: (msg: string) => void; ifFailed?: string } = {}
 ): Promise<UploadedTrack[]> {
   const log = opts.log ?? console.log;
   const n = items.length;
@@ -66,7 +66,7 @@ export async function uploadTracks(
     r.status === 'rejected' ? [`  ${i + 1}. ${items[i].title}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`] : []
   );
   if (failed.length) {
-    throw new Error(`${failed.length} of ${n} track(s) failed to upload, so no card was made. Run again to retry them:\n${failed.join('\n')}`);
+    throw new Error(`${failed.length} of ${n} track(s) failed to upload, so ${opts.ifFailed ?? 'no card was made'}. Run again to retry them:\n${failed.join('\n')}`);
   }
   return results.map((r) => (r as PromiseFulfilledResult<UploadedTrack>).value);
 }

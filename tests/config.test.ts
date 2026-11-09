@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { loadConfig, loadTokens, saveTokens } from '../src/config.js';
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const TEST_DIR = join(import.meta.dirname, '.test-config');
@@ -47,6 +47,13 @@ describe('config', () => {
     saveTokens(tokens, tokensPath);
     const loaded = loadTokens(tokensPath);
     expect(loaded).toEqual(tokens);
+  });
+
+  it('keeps the tokens file readable only by you, even one made earlier', () => {
+    const tokensPath = join(TEST_DIR, 'tokens.json');
+    writeFileSync(tokensPath, '{}', { mode: 0o644 });
+    saveTokens({ accessToken: 'a', refreshToken: 'r', expiresAt: 1 }, tokensPath);
+    expect(statSync(tokensPath).mode & 0o777).toBe(0o600);
   });
 
   it('returns null for missing tokens', () => {

@@ -109,6 +109,16 @@ describe('getValidTokens', () => {
     expect(JSON.parse(readFileSync(tokensPath, 'utf8')).refreshToken).toBe('new-refresh');
   });
 
+  it('keeps the old refresh token when the refresh response has none', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ access_token: 'new-access', expires_in: 3600 }), { status: 200 })
+    );
+    write(Date.now() + 30_000);
+    await getValidTokens(configPath, tokensPath);
+    expect(JSON.parse(readFileSync(tokensPath, 'utf8')).refreshToken).toBe('old-refresh');
+  });
+
   it('throws when the refresh fails', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('denied', { status: 403 }));

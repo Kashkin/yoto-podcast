@@ -2,11 +2,10 @@ import { parseFeed } from '../services/feed.js';
 import { formatFilename, detectPadWidth, downloadEpisode } from '../services/download.js';
 import { mkdirSync, existsSync } from 'node:fs';
 import { notify } from '../services/notify.js';
-import { createYotoService } from '../services/yoto.js';
-import { mapLimit, UPLOAD_CONCURRENCY } from '../services/batch.js';
-import { loadTokens } from '../config.js';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { createYotoService, type UploadedTrack } from '../services/yoto.js';
+import { uploadTracks } from '../services/batch.js';
+import { getValidTokens } from './auth.js';
+import type { Paths } from './myo.js';
 
 interface BackfillOptions {
   feed: string;
@@ -15,7 +14,23 @@ interface BackfillOptions {
   card?: string;
 }
 
-export async function runBackfill(options: BackfillOptions): Promise<void> {
+type CardApi = {
+  uploadAudioFile: (path: string, log?: (msg: string) => void) => Promise<UploadedTrack>;
+  setCardChapters: (cardId: string, chapters: { title: string; track: UploadedTrack }[]) => Promise<void>;
+};
+
+// Replaces the card's chapters with these episodes, newest first. Every upload must
+// succeed first: the card is replaced whole, so a partial set would drop episodes.
+export async function pushToCard(yoto: CardApi, cardId: string, files: { title: string; path: string }[]): Promise<void> {
+  console.log(`\nUploading ${files.length} episodes to Yoto...`);
+  const tracks = await uploadTracks(files, (path, log) => yoto.uploadAudioFile(path, log), { ifFailed: 'the card was left as it was' });
+  const chapters = files.map((f, i) => ({ title: f.title, track: tracks[i] })).reverse();
+  console.log(`\nSetting ${chapters.length} chapters on card ${cardId}...`);
+  await yoto.setCardChapters(cardId, chapters);
+  console.log('Card updated.');
+}
+
+export async function runBackfill(options: BackfillOptions, paths: Paths): Promise<void> {
   const { feed, dir, name, card: cardId } = options;
 
   mkdirSync(dir, { recursive: true });
@@ -69,38 +84,15 @@ export async function runBackfill(options: BackfillOptions): Promise<void> {
 
   // Step 2: Upload to Yoto if card ID provided
   if (cardId) {
-    const tokensPath = join(homedir(), '.config', 'yoto-podcast', 'tokens.json');
-    const tokens = loadTokens(tokensPath);
+    if (failed > 0) {
+      throw new Error(`${failed} episode(s) failed to download, so the card was left as it was. Run again to retry them.`);
+    }
+    const tokens = await getValidTokens(paths.configPath, paths.tokensPath);
     if (!tokens) {
       console.error('No Yoto tokens found. Run `yoto-podcast auth` first.');
       return;
     }
-
-    const yoto = createYotoService(tokens.accessToken);
-    console.log(`\nUploading ${filePaths.length} episodes to Yoto...`);
-
-    const chapters: { title: string; track: Awaited<ReturnType<typeof yoto.uploadAudioFile>> }[] = [];
-
-    // A few at a time; results stay in episode order. Failures are skipped, as before.
-    const results = await mapLimit(filePaths, UPLOAD_CONCURRENCY, (file) =>
-      yoto.uploadAudioFile(file.path, (msg) => console.log(`  ${file.title}: ${msg.trim()}`))
-    );
-    results.forEach((r, i) => {
-      const file = filePaths[i];
-      if (r.status === 'fulfilled') {
-        chapters.push({ title: file.title, track: r.value });
-      } else {
-        const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
-        console.error(`  ERROR uploading ${file.title}: ${msg}`);
-      }
-    });
-
-    // Newest first on the card
-    chapters.reverse();
-
-    console.log(`\nSetting ${chapters.length} chapters on card ${cardId}...`);
-    await yoto.setCardChapters(cardId, chapters);
-    console.log('Card updated.');
+    await pushToCard(createYotoService(tokens.accessToken), cardId, filePaths);
   }
 
   console.log(`\nBackfill complete.`);

@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -36,5 +36,7 @@ export function loadTokens(tokensPath: string): StoredTokens | null {
 
 export function saveTokens(tokens: StoredTokens, tokensPath: string): void {
   mkdirSync(dirname(tokensPath), { recursive: true });
-  writeFileSync(tokensPath, JSON.stringify(tokens, null, 2));
+  // Owner-only: the refresh token controls the Yoto account. chmod covers a file made before this.
+  writeFileSync(tokensPath, JSON.stringify(tokens, null, 2), { mode: 0o600 });
+  chmodSync(tokensPath, 0o600);
 }

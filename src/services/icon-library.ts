@@ -70,9 +70,13 @@ export async function userIconKeys(icons: UserIcon[], log = console.log): Promis
   for (let i = 0; i < todo.length; i += 8) {
     await Promise.all(
       todo.slice(i, i + 8).map(async (icon) => {
-        const res = await fetch(icon.url);
-        if (!res.ok) return; // skip; it'll be retried next time
-        cache[icon.mediaId] = await iconPixelKey(Buffer.from(await res.arrayBuffer()));
+        // Skip an icon that won't download or decode; it's retried next time
+        try {
+          const res = await fetch(icon.url);
+          if (res.ok) cache[icon.mediaId] = await iconPixelKey(Buffer.from(await res.arrayBuffer()));
+        } catch {
+          log(`Couldn't read icon yoto:#${icon.mediaId}; skipping it`);
+        }
       })
     );
   }

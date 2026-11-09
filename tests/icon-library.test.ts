@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { normalisePixels, iconPixelKey, duplicateGroups, renderContactSheet } from '../src/services/icon-library.js';
+import { normalisePixels, iconPixelKey, duplicateGroups, renderContactSheet, userIconKeys } from '../src/services/icon-library.js';
 
 const DIR = join(import.meta.dirname, '.test-icons');
 const ff = (...args: string[]) => execFileSync('ffmpeg', ['-v', 'error', '-y', ...args]);
@@ -56,5 +56,25 @@ describe('renderContactSheet', () => {
     expect(html).toContain('<img src="https://x/aaa"');
     expect(html).toContain('yoto:#aaa');
     expect(html).toMatch(/duplicate/i);
+  });
+});
+
+describe('userIconKeys', () => {
+  it('skips an icon it cannot read and still keys the rest', async () => {
+    process.env.YOTO_ICON_CACHE = join(DIR, 'cache.json');
+    const gold = readFileSync(join(DIR, 'gold.png'));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      String(url).endsWith('/bad') ? new Response('not an image') : new Response(gold)
+    );
+    const keys = await userIconKeys(
+      [
+        { mediaId: 'bad', url: 'https://icons/bad' },
+        { mediaId: 'good', url: 'https://icons/good' },
+      ],
+      () => {}
+    );
+    expect([...keys.keys()]).toEqual(['good']);
+    vi.restoreAllMocks();
+    delete process.env.YOTO_ICON_CACHE;
   });
 });

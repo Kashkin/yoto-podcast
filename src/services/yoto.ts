@@ -136,6 +136,7 @@ export function createYotoService(jwt: string, opts: { retryBaseMs?: number } = 
       const newChapter: YotoChapter = {
         key: '00',
         title,
+        display: { icon16x16: DEFAULT_ICON },
         tracks: [
           {
             key: '01',
@@ -150,12 +151,11 @@ export function createYotoService(jwt: string, opts: { retryBaseMs?: number } = 
         ],
       };
 
-      // Prepend new chapter, then re-key all chapters
+      // Prepend new chapter, then re-key all chapters; their icons stay as they are
       card.content.chapters.unshift(newChapter);
       for (let i = 0; i < card.content.chapters.length; i++) {
         const ch = card.content.chapters[i];
         ch.key = String(i).padStart(2, '0');
-        ch.display = { icon16x16: DEFAULT_ICON };
         ch.overlayLabel = String(i + 1);
       }
 

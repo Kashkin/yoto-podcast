@@ -53,3 +53,9 @@ describe('shouldSkip', () => {
     expect(shouldSkip('Anything', [])).toBe(false);
   });
 });
+
+describe('parseFeed with no episodes', () => {
+  it('returns nothing for a channel without items', () => {
+    expect(parseFeed('<?xml version="1.0"?><rss version="2.0"><channel><title>Empty</title></channel></rss>')).toEqual([]);
+  });
+});

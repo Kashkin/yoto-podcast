@@ -102,12 +102,13 @@ export async function refreshAccessToken(
   }
   const data = (await res.json()) as {
     access_token: string;
-    refresh_token: string;
+    refresh_token?: string;
     expires_in: number;
   };
   return {
     accessToken: data.access_token,
-    refreshToken: data.refresh_token,
+    // Only sent when the server rotates refresh tokens; otherwise the old one stays valid
+    refreshToken: data.refresh_token ?? refreshToken,
     expiresAt: Date.now() + data.expires_in * 1000,
   };
 }

@@ -93,6 +93,12 @@ describe('checkPodcast', () => {
     expect(result.newEpisodes).toHaveLength(0);
   });
 
+  it('reports a feed that cannot be reached instead of throwing', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('fetch failed'));
+    const result = await checkPodcast(PODCAST);
+    expect(result.errors).toEqual(['Failed to fetch feed: fetch failed']);
+  });
+
   it('respects skip patterns', async () => {
     writeFileSync(join(TEST_DIR, '01 - Episode 1.mp3'), '');
     writeFileSync(join(TEST_DIR, '02 - Episode 2.mp3'), '');

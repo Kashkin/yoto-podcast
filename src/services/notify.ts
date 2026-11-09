@@ -6,23 +6,21 @@ const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../YotoPodcast
 const MAIN_SCPT = join(APP_DIR, 'Contents/Resources/Scripts/main.scpt');
 const APPLET = join(APP_DIR, 'Contents/MacOS/applet');
 
+// A quoted AppleScript string literal. Titles come from podcast feeds, so a stray
+// backslash or quote must not end the string and let the rest run as script.
+export function appleString(s: string): string {
+  return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
 export function notify(title: string, message: string): void {
+  const script = `display notification ${appleString(message)} with title ${appleString(title)}`;
   try {
-    // Escape double quotes for AppleScript
-    const safeTitle = title.replace(/"/g, '\\"');
-    const safeMsg = message.replace(/"/g, '\\"');
-    execFileSync('osacompile', [
-      '-o', MAIN_SCPT,
-      '-e', `display notification "${safeMsg}" with title "${safeTitle}"`,
-    ]);
+    execFileSync('osacompile', ['-o', MAIN_SCPT, '-e', script]);
     execFile(APPLET, (err) => {
       if (err) { /* silently ignore */ }
     });
   } catch {
     // Fall back to plain notification
-    execFile('osascript', [
-      '-e',
-      `display notification "${message}" with title "${title}"`,
-    ], () => { /* silently ignore */ });
+    execFile('osascript', ['-e', script], () => { /* silently ignore */ });
   }
 }

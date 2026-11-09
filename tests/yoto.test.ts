@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createYotoService, imageType } from '../src/services/yoto.js';
+import { createYotoService, imageType, DEFAULT_ICON } from '../src/services/yoto.js';
 
 // Shared mock SDK instance so tests can inspect calls
 const mockSdk = {
@@ -106,6 +106,21 @@ describe('YotoService', () => {
       }),
       true
     );
+  });
+});
+
+describe('prependTrackToCard icons', () => {
+  it('keeps the icons already on the card and gives only the new chapter the default', async () => {
+    mockSdk.content.getCard.mockResolvedValueOnce({
+      cardId: 'test-card',
+      title: 'Test Podcast',
+      content: {
+        chapters: [{ key: '00', title: 'Episode 1', display: { icon16x16: 'yoto:#dino' }, tracks: [{ key: '01', title: 'Episode 1', trackUrl: 'yoto:#abc' }] }],
+      },
+    });
+    await createYotoService('test-jwt').prependTrackToCard('test-card', 'New Episode', { trackUrl: 'yoto:#new', format: 'opus' });
+    const saved = mockSdk.content.updateCard.mock.calls.at(-1)![0];
+    expect(saved.content.chapters.map((c: { display?: { icon16x16: string } }) => c.display?.icon16x16)).toEqual([DEFAULT_ICON, 'yoto:#dino']);
   });
 });
 
