@@ -1,16 +1,16 @@
+<img src="yoto-podcasts.png" alt="Yoto Podcast icon" width="96" height="96" />
+
 # yoto-podcast
 
 The home for Nick's [Yoto](https://yotoplay.com) work. Built for a single-user, single-Mac setup.
 
 - **Albums:** turn audio from any source (CD rips, downloads) into a finished album in the Box Yoto library: named files, ID3 tags, cover, track guide. See [Albums](#albums).
 - **Cards:** create and edit Make Your Own cards from the command line, including icons from Yoto, [Tinker](https://tinker.audio), yotoicons.com and Nick's own uploads. See [Make Your Own cards](#make-your-own-cards).
+- **Podcasts:** watch RSS feeds, download new episodes, and push them to cards as new chapters, daily under launchd.
 
 <a href="https://tinker.audio/?from=api&app=906462c4-6130-4378-9f24-ad9ca7ac4c88" target="_blank" rel="noopener" aria-label="Icons powered by Tinker" data-tinker-app="906462c4-6130-4378-9f24-ad9ca7ac4c88">
   <img src="https://cdn.tinker.audio/powered-by-tinker.svg" alt="Icons powered by Tinker" width="198" height="40" />
 </a>
-- **Podcasts:** watch RSS feeds, download new episodes, and push them to cards as new chapters, daily under launchd.
-
-![Yoto Podcast icon](yoto-podcasts.png)
 
 ## Podcasts: what it does
 
@@ -144,7 +144,8 @@ Every edit fetches the card, changes only what was asked, prints the change, the
 - `card create` refuses if a card with the same title exists (`--allow-duplicate` to override), and uploads every file before creating the card, so a failed upload leaves no half-made card. Uploads run three at a time and retry with back-off when Yoto refuses (429) or errors (5xx); any track that still fails is named, and a re-run only re-uploads what's missing.
 - An icon name that matches several public icons lists them with their media IDs; pass the ID instead.
 - yotoicons.com icons are paste-in only: find one on the site, then pass its image URL or `yotoicons:<id>`. The CLI downloads that PNG, bumps the site's download count for the artist, and uploads it as a custom icon. There's no yotoicons search, because their API needs a key.
-- Tinker Icons can be searched by name, misspelling or meaning ("something for bedtime"). `icons tinker` lists `tinker:<id>` refs numbered in the same order as `--sheet`'s picture (left to right, ten to a row). Pass a ref anywhere an icon goes; the CLI downloads the PNG from Tinker's CDN and uploads it as a custom icon. Each app gets 500 searches a day.
+- Tinker Icons can be searched by name, misspelling or meaning ("something for bedtime"). `icons tinker` lists `tinker:<id>` refs numbered in the same order as `--sheet`'s picture (left to right, ten to a row). Pass a ref anywhere an icon goes; the CLI downloads the PNG from Tinker's CDN and uploads it as a custom icon.
+- Tinker gives each app 30 searches a minute, 150 an hour, 500 a day and 5,000 results a day, over rolling windows. Every search counts its `--limit` (default 12) against the results, so the default allows about 400 searches a day and `--limit 100` only 50. `icons tinker` keeps its own count in `~/Library/Caches/yoto-podcast/tinker-usage.json` and stops before a limit, saying when there's room again, rather than letting Tinker refuse.
 - Chapter numbers on the player are renumbered after add/remove/move, unless the card uses custom labels.
 - Uploading a PNG, yotoicons or Tinker icon first checks your icon library pixel by pixel and reuses a match instead of uploading a duplicate.
 - `icons mine` writes a contact sheet of your uploaded icons (newest first, click to copy `yoto:#<id>`) and flags any picture uploaded twice.
@@ -267,7 +268,7 @@ src/
     album-manifest.ts     # album.json schema, names, tags, track guide
     card-edit.ts          # pure card edits + change diff
     icons.ts              # public icon search, yotoicons paste-in
-    tinker.ts             # Tinker Icons search, download and results sheet
+    tinker.ts             # Tinker Icons search, usage limits, download and results sheet
     icon-library.ts       # your uploaded icons: pixel matching, contact sheet
     feed.ts               # RSS parse + skip-pattern + title normalize
     download.ts           # filename math + atomic download via .tmp

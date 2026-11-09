@@ -253,7 +253,7 @@ icons
 icons
   .command('tinker <query>')
   .description('Search Tinker Icons by name, misspelling or meaning (needs TINKER_API_KEY in .env)')
-  .option('--limit <n>', 'How many results, up to 100', '20')
+  .option('--limit <n>', 'How many results, up to 100; each counts against 5,000 a day', '12')
   .option('--sheet <png>', 'Also write a picture of the results, numbered left to right')
   .action(run((query, o) => myo.searchTinkerIcons(query, { limit: num(o.limit), sheet: o.sheet })));
 

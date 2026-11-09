@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vites
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseTinkerId, tinkerKey, searchTinker, downloadTinkerIcon, writeTinkerSheet } from '../src/services/tinker.js';
-
 const DIR = join(import.meta.dirname, '.test-tinker');
+process.env.TINKER_USAGE = join(DIR, 'usage.json');
+const { parseTinkerId, tinkerKey, searchTinker, downloadTinkerIcon, writeTinkerSheet, reserveSearch } = await import('../src/services/tinker.js');
+
 const ID = '0b2f1c5e-1234-4abc-9def-0123456789ab';
 const ff = (...args: string[]) => execFileSync('ffmpeg', ['-v', 'error', '-y', ...args]);
 const size = (file: string) =>
@@ -20,6 +21,7 @@ beforeAll(() => {
 beforeEach(() => {
   vi.restoreAllMocks();
   delete process.env.TINKER_API_KEY;
+  rmSync(process.env.TINKER_USAGE!, { force: true });
 });
 
 afterAll(() => rmSync(DIR, { recursive: true, force: true }));
@@ -113,5 +115,56 @@ describe('writeTinkerSheet', () => {
     await writeTinkerSheet(icons, out);
 
     expect(size(out)).toBe('216x72');
+  });
+});
+
+describe('reserveSearch', () => {
+  const MIN = 60_000;
+  const HOUR = 60 * MIN;
+  const now = Date.UTC(2026, 10, 9, 12);
+
+  it('allows 30 searches a minute, then says when the next one is free', () => {
+    for (let i = 0; i < 30; i++) reserveSearch(1, now - 50_000 + i);
+    expect(() => reserveSearch(1, now)).toThrow('Tinker allows 30 searches a minute; the next one is free in 10 s.');
+  });
+
+  it('allows 150 searches an hour', () => {
+    for (let i = 0; i < 150; i++) reserveSearch(1, now - 40 * MIN + i * 3000);
+    expect(() => reserveSearch(1, now)).toThrow('Tinker allows 150 searches an hour; the next one is free in 20 min.');
+  });
+
+  it('allows 500 searches a day', () => {
+    for (let i = 0; i < 500; i++) reserveSearch(1, now - 20 * HOUR + i * 2 * MIN);
+    expect(() => reserveSearch(1, now)).toThrow(/500 searches a day; the next one is free in 4 h/);
+  });
+
+  it("counts each search's requested results against 5,000 a day", () => {
+    for (let i = 0; i < 50; i++) reserveSearch(100, now - 10 * HOUR + i * 5 * MIN);
+    expect(() => reserveSearch(12, now)).toThrow(/5,000 results a day; 12 more are free in 14 h/);
+  });
+
+  it('forgets searches more than a day old', () => {
+    for (let i = 0; i < 50; i++) reserveSearch(100, now - 30 * HOUR + i * 5 * MIN);
+    expect(() => reserveSearch(100, now)).not.toThrow();
+  });
+
+  it('refuses a limit Tinker would reject', () => {
+    expect(() => reserveSearch(101, now)).toThrow('A Tinker search returns 1 to 100 results.');
+    expect(() => reserveSearch(0, now)).toThrow('A Tinker search returns 1 to 100 results.');
+  });
+});
+
+describe('searchTinker within limits', () => {
+  it('asks for 12 results by default', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ query: 'wolf', results: [] }));
+    await searchTinker('wolf', undefined, 'k');
+    expect(String(fetch.mock.calls[0][0])).toBe('https://api.tinker.audio/icons?q=wolf&limit=12');
+  });
+
+  it('never calls Tinker once a limit is reached', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ query: 'wolf', results: [] }));
+    for (let i = 0; i < 30; i++) reserveSearch(1);
+    await expect(searchTinker('wolf', 12, 'k')).rejects.toThrow(/30 searches a minute/);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
