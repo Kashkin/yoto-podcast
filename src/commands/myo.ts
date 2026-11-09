@@ -6,6 +6,7 @@ import { scanAlbum, titleFromFile } from '../services/album.js';
 import { searchIcons, formatIcon } from '../services/icons.js';
 import { userIconKeys, duplicateGroups, renderContactSheet } from '../services/icon-library.js';
 import { resolveIcon } from '../services/icon-resolve.js';
+import { searchTinker, writeTinkerSheet } from '../services/tinker.js';
 import { uploadTracks, UPLOAD_CONCURRENCY } from '../services/batch.js';
 import * as edit from '../services/card-edit.js';
 import { parseManifest, cardChapters, coverSlug } from '../services/album-manifest.js';
@@ -203,6 +204,17 @@ export async function searchPublicIcons(paths: Paths, query: string): Promise<vo
   const matches = searchIcons(await yoto.getPublicIcons(), query);
   for (const icon of matches) console.log(formatIcon(icon));
   console.log(`\n${matches.length} match(es). Use the name or media ID with \`chapter icon\`.`);
+}
+
+// Numbered in the same order as the sheet: left to right, top to bottom
+export async function searchTinkerIcons(query: string, opts: { limit: number; sheet?: string }): Promise<void> {
+  const results = await searchTinker(query, opts.limit);
+  results.forEach((icon, i) => console.log(`${String(i + 1).padStart(3)}. tinker:${icon.id}  ${icon.name}`));
+  console.log(`\n${results.length} match(es). Use tinker:<id> with \`chapter icon\` or as a yotoIcon.`);
+  if (opts.sheet && results.length) {
+    await writeTinkerSheet(results, opts.sheet);
+    console.log(`Sheet: ${opts.sheet}`);
+  }
 }
 
 // Writes an HTML contact sheet of your uploaded icons and reports duplicates.

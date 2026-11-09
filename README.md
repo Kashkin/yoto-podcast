@@ -3,7 +3,11 @@
 The home for Nick's [Yoto](https://yotoplay.com) work. Built for a single-user, single-Mac setup.
 
 - **Albums:** turn audio from any source (CD rips, downloads) into a finished album in the Box Yoto library: named files, ID3 tags, cover, track guide. See [Albums](#albums).
-- **Cards:** create and edit Make Your Own cards from the command line, including icons from Yoto, yotoicons.com and Nick's own uploads. See [Make Your Own cards](#make-your-own-cards).
+- **Cards:** create and edit Make Your Own cards from the command line, including icons from Yoto, [Tinker](https://tinker.audio), yotoicons.com and Nick's own uploads. See [Make Your Own cards](#make-your-own-cards).
+
+<a href="https://tinker.audio/?from=api&app=906462c4-6130-4378-9f24-ad9ca7ac4c88" target="_blank" rel="noopener" aria-label="Icons powered by Tinker" data-tinker-app="906462c4-6130-4378-9f24-ad9ca7ac4c88">
+  <img src="https://cdn.tinker.audio/powered-by-tinker.svg" alt="Icons powered by Tinker" width="198" height="40" />
+</a>
 - **Podcasts:** watch RSS feeds, download new episodes, and push them to cards as new chapters, daily under launchd.
 
 ![Yoto Podcast icon](yoto-podcasts.png)
@@ -46,6 +50,8 @@ Albums and card labels need to know where your Yoto library lives. Copy `.env.ex
 ```bash
 cp .env.example .env
 ```
+
+To search Tinker Icons, also set `TINKER_API_KEY` to your app's key from [Tinker for developers](https://developers.tinker.audio), or to a 1Password reference such as `op://Private/Tinker API/key`, which is read with `op read` each time a search runs. If you're signed in to more than one 1Password account, set `OP_ACCOUNT` in `.env` to the one holding the key.
 
 For podcasts, create `~/.config/yoto-podcast/config.json`:
 
@@ -111,6 +117,7 @@ Commands for any MYO card, not just podcasts. They use the same tokens as `check
 npx tsx src/cli.ts card list
 npx tsx src/cli.ts card show <cardId>
 npx tsx src/cli.ts icons search moon
+npx tsx src/cli.ts icons tinker "grey wolf" --sheet wolves.png   # Tinker Icons, plus a picture of the results
 npx tsx src/cli.ts icons mine        # your own uploaded icons, as an HTML contact sheet
 
 # Create: one chapter per "NN - Title.mp3", ordered by NN.
@@ -125,6 +132,7 @@ npx tsx src/cli.ts card cover <cardId> new-cover.jpg
 npx tsx src/cli.ts chapter rename <cardId> 3 "Blast off"
 npx tsx src/cli.ts chapter icon <cardId> 3 "Crescent moon"   # or a media ID, a 16x16 PNG, or yoto:#id
 npx tsx src/cli.ts chapter icon <cardId> 3 https://yotoicons.com/static/uploads/1701.png   # or yotoicons:1701
+npx tsx src/cli.ts chapter icon <cardId> 3 tinker:<id>   # or its cdn.tinker.audio URL
 npx tsx src/cli.ts chapter audio <cardId> 3 "03 - Part 2.mp3"
 npx tsx src/cli.ts chapter add <cardId> "16 - Bonus.mp3" [--at 2] [--title "..."] [--icon <icon>]
 npx tsx src/cli.ts chapter remove <cardId> 16
@@ -136,8 +144,9 @@ Every edit fetches the card, changes only what was asked, prints the change, the
 - `card create` refuses if a card with the same title exists (`--allow-duplicate` to override), and uploads every file before creating the card, so a failed upload leaves no half-made card. Uploads run three at a time and retry with back-off when Yoto refuses (429) or errors (5xx); any track that still fails is named, and a re-run only re-uploads what's missing.
 - An icon name that matches several public icons lists them with their media IDs; pass the ID instead.
 - yotoicons.com icons are paste-in only: find one on the site, then pass its image URL or `yotoicons:<id>`. The CLI downloads that PNG, bumps the site's download count for the artist, and uploads it as a custom icon. There's no yotoicons search, because their API needs a key.
+- Tinker Icons can be searched by name, misspelling or meaning ("something for bedtime"). `icons tinker` lists `tinker:<id>` refs numbered in the same order as `--sheet`'s picture (left to right, ten to a row). Pass a ref anywhere an icon goes; the CLI downloads the PNG from Tinker's CDN and uploads it as a custom icon. Each app gets 500 searches a day.
 - Chapter numbers on the player are renumbered after add/remove/move, unless the card uses custom labels.
-- Uploading a PNG or yotoicons icon first checks your icon library pixel by pixel and reuses a match instead of uploading a duplicate.
+- Uploading a PNG, yotoicons or Tinker icon first checks your icon library pixel by pixel and reuses a match instead of uploading a duplicate.
 - `icons mine` writes a contact sheet of your uploaded icons (newest first, click to copy `yoto:#<id>`) and flags any picture uploaded twice.
 - When the album folder has an `album.json` (see [Albums](#albums)), `card create` takes chapter titles and `yotoIcon`s from it, skips `leaveOff` tracks, and uses the cover from `Cover images/`.
 - After creating a card, link it to a physical MYO card in the Yoto app.
@@ -258,6 +267,7 @@ src/
     album-manifest.ts     # album.json schema, names, tags, track guide
     card-edit.ts          # pure card edits + change diff
     icons.ts              # public icon search, yotoicons paste-in
+    tinker.ts             # Tinker Icons search, download and results sheet
     icon-library.ts       # your uploaded icons: pixel matching, contact sheet
     feed.ts               # RSS parse + skip-pattern + title normalize
     download.ts           # filename math + atomic download via .tmp

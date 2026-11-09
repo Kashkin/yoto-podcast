@@ -38,6 +38,7 @@ beforeEach(() => {
     fetched.push(url);
     if (url === 'https://yotoicons.com/static/uploads/1701.png') return new Response(gold, { headers: { 'content-type': 'image/png' } });
     if (url.startsWith('https://yotoicons.com/api/counter')) return new Response('ok');
+    if (url === `https://cdn.tinker.audio/icons/${TINKER_ID}.png`) return new Response(gold, { headers: { 'content-type': 'image/png' } });
     if (url === 'https://library/gold') return new Response(gold);
     if (url === 'https://library/blue') return new Response(blue);
     throw new Error(`unexpected fetch ${url}`);
@@ -47,6 +48,7 @@ beforeEach(() => {
 
 afterAll(() => rmSync(DIR, { recursive: true, force: true }));
 
+const TINKER_ID = '0b2f1c5e-1234-4abc-9def-0123456789ab';
 const counted = () => fetched.filter((u) => u.includes('/api/counter'));
 
 describe('resolveIcon with yotoicons', () => {
@@ -75,6 +77,21 @@ describe('resolveIcon with an image path', () => {
     const yoto = fakeYoto([{ mediaId: 'b1', url: 'https://library/blue' }]);
     const ref = await resolveIcon(yoto, 'icons/gold.png', { dryRun: false, baseDir: join(DIR, 'album') });
     expect(ref).toBe('yoto:#uploaded');
+    expect(yoto.getPublicIcons).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveIcon with Tinker', () => {
+  it('reuses a library match instead of uploading again', async () => {
+    const yoto = fakeYoto([{ mediaId: 'g1', url: 'https://library/gold' }]);
+    expect(await resolveIcon(yoto, `tinker:${TINKER_ID}`, { dryRun: false })).toBe('yoto:#g1');
+    expect(yoto.uploadIcon).not.toHaveBeenCalled();
+  });
+
+  it('uploads a new icon from the CDN', async () => {
+    const yoto = fakeYoto([{ mediaId: 'b1', url: 'https://library/blue' }]);
+    expect(await resolveIcon(yoto, `https://cdn.tinker.audio/icons/${TINKER_ID}.png`, { dryRun: false })).toBe('yoto:#uploaded');
+    expect(yoto.uploadIcon).toHaveBeenCalledWith(gold, 'image/png');
     expect(yoto.getPublicIcons).not.toHaveBeenCalled();
   });
 });

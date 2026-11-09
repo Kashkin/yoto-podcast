@@ -174,7 +174,7 @@ card
   .description('Create a card from a folder of "NN - Title.mp3" files, one chapter per file')
   .option('--title <title>', 'Card title (default: folder name)')
   .option('--cover <image>', 'Cover image (jpg/png/gif/webp)')
-  .option('--icon <icon>', 'Icon for every chapter: public icon name/ID, yotoicons:<id> or URL, 16x16 image path, or yoto:#id')
+  .option('--icon <icon>', 'Icon for every chapter: public icon name/ID, yotoicons:<id> or URL, tinker:<id> or URL, 16x16 image path, or yoto:#id')
   .option('--allow-duplicate', 'Create even if a card with this title exists', false)
   .option('--dry-run', 'Show the plan without uploading', false)
   .action(run((dir, o) => myo.createCard(paths, { dir, ...o })));
@@ -201,7 +201,7 @@ chapter
 
 chapter
   .command('icon <cardId> <n> <icon>')
-  .description('Set the icon of chapter n: public icon name/ID, yotoicons:<id> or URL, 16x16 image path, or yoto:#id')
+  .description('Set the icon of chapter n: public icon name/ID, yotoicons:<id> or URL, tinker:<id> or URL, 16x16 image path, or yoto:#id')
   .option('--dry-run', 'Show the change without uploading or saving', false)
   .action(run((cardId, n, icon, o) => myo.setChapterIcon(paths, cardId, num(n), icon, o.dryRun)));
 
@@ -216,7 +216,7 @@ chapter
   .description('Add a chapter from an audio file (default: at the end)')
   .option('--title <title>', 'Chapter title (default: from the file name)')
   .option('--at <n>', 'Position for the new chapter', num)
-  .option('--icon <icon>', 'Public icon name/ID, yotoicons:<id> or URL, 16x16 image path, or yoto:#id')
+  .option('--icon <icon>', 'Public icon name/ID, yotoicons:<id> or URL, tinker:<id> or URL, 16x16 image path, or yoto:#id')
   .option('--dry-run', 'Show the change without uploading or saving', false)
   .action(run((cardId, file, o) => myo.addChapter(paths, cardId, file, o)));
 
@@ -243,12 +243,19 @@ program
     })
   );
 
-const icons = program.command('icons').description('Yoto public icons and your own uploaded icons');
+const icons = program.command('icons').description('Yoto public icons, Tinker icons and your own uploaded icons');
 
 icons
   .command('search <query>')
   .description('Search public icons by name or tag')
   .action(run((query) => myo.searchPublicIcons(paths, query)));
+
+icons
+  .command('tinker <query>')
+  .description('Search Tinker Icons by name, misspelling or meaning (needs TINKER_API_KEY in .env)')
+  .option('--limit <n>', 'How many results, up to 100', '20')
+  .option('--sheet <png>', 'Also write a picture of the results, numbered left to right')
+  .action(run((query, o) => myo.searchTinkerIcons(query, { limit: num(o.limit), sheet: o.sheet })));
 
 icons
   .command('mine')

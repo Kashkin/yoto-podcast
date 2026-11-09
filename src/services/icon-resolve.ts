@@ -4,6 +4,7 @@ import { expandHome } from '../config.js';
 import { imageType, type createYotoService } from './yoto.js';
 import { pickPublicIcon, parseYotoiconsId, downloadYotoicon, countYotoiconDownload } from './icons.js';
 import { iconPixelKey, userIconKeys, rememberIconKey } from './icon-library.js';
+import { parseTinkerId, downloadTinkerIcon } from './tinker.js';
 
 type IconApi = Pick<ReturnType<typeof createYotoService>, 'getUserIcons' | 'uploadIcon' | 'getPublicIcons'>;
 
@@ -37,7 +38,7 @@ async function uploadOrReuse(
 
 // Accepts `yoto:#<mediaId>`, a path to an image (relative to `baseDir`, else
 // the working directory; uploaded unless already in your library), a
-// yotoicons.com ID or URL (same), or a public icon name / ID.
+// yotoicons.com ID or URL (same), a Tinker `tinker:<id>` or CDN URL (same), or a public icon name / ID.
 export async function resolveIcon(yoto: IconApi, icon: string, opts: { dryRun: boolean; baseDir?: string }): Promise<string> {
   if (icon.startsWith('yoto:#')) return icon;
   const path = resolve(opts.baseDir ?? process.cwd(), expandHome(icon));
@@ -50,6 +51,12 @@ export async function resolveIcon(yoto: IconApi, icon: string, opts: { dryRun: b
     const label = `yotoicons ${yotoiconsId}`;
     const { ref, uploaded } = await uploadOrReuse(yoto, await downloadYotoicon(yotoiconsId), 'image/png', label, opts.dryRun);
     if (uploaded) await countYotoiconDownload(yotoiconsId);
+    return ref ?? `(upload ${label})`;
+  }
+  const tinkerId = parseTinkerId(icon);
+  if (tinkerId) {
+    const label = `Tinker icon ${tinkerId}`;
+    const { ref } = await uploadOrReuse(yoto, await downloadTinkerIcon(tinkerId), 'image/png', label, opts.dryRun);
     return ref ?? `(upload ${label})`;
   }
   return pickPublicIcon(await yoto.getPublicIcons(), icon);
