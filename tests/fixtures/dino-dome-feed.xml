@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom">
+    <channel>
+        <title>Dino Dome</title>
+        <link>https://www.abc.net.au/kidslisten/programs/dino-dome/</link>
+        <description>Monstrous meat-eaters, humble herbivores and stealthy scavengers meet in the Dino Dome for the greatest race of all time.</description>
+        <language>en</language>
+        <item>
+            <title>Rugops vs Rajasaurus</title>
+            <link>https://www.abc.net.au/kidslisten/programs/dino-dome/rugops-v-rajasaurus/106404736</link>
+            <description>Niger's Rugops takes on India's Rajasaurus in Round One of the Dino Dome World Cup.</description>
+            <enclosure url="https://mediacore-live-production.akamaized.net/audio/02/it/Z/qv.mp3" length="21574656" type="audio/mpeg"/>
+            <pubDate>Thu, 26 Mar 2026 04:00:00 +1100</pubDate>
+            <itunes:duration>0:14:58</itunes:duration>
+        </item>
+        <item>
+            <title>Microraptor vs Ceoptera</title>
+            <link>https://www.abc.net.au/kidslisten/programs/dino-dome/microraptor-v-ceoptera/106404724</link>
+            <description>China's Microraptor takes on Scotland's Ceoptera in Round One of the Dino Dome World Cup!</description>
+            <enclosure url="https://mediacore-live-production.akamaized.net/audio/02/io/Z/4b.mp3" length="20087424" type="audio/mpeg"/>
+            <pubDate>Thu, 19 Mar 2026 04:00:00 +1100</pubDate>
+            <itunes:duration>0:13:57</itunes:duration>
+        </item>
+        <item>
+            <title>Minmi vs Patagotitan</title>
+            <link>https://www.abc.net.au/kidslisten/programs/dino-dome/minmi-v-patagotitan/106404722</link>
+            <description>Australia's Minmi takes on Argentina's Patagotitan in Round One of the Dino Dome World Cup!</description>
+            <enclosure url="https://mediacore-live-production.akamaized.net/audio/02/ih/Z/00.mp3" length="22235328" type="audio/mpeg"/>
+            <pubDate>Thu, 12 Mar 2026 00:00:00 +1100</pubDate>
+            <itunes:duration>0:15:26</itunes:duration>
+        </item>
+    </channel>
+</rss>

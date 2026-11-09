@@ -1,0 +1,13 @@
+node_modules/
+.claude/worktrees/
+dist/
+*.tmp
+.DS_Store
+# Rewritten by src/services/notify.ts on every notification
+YotoPodcast.app/Contents/Resources/Scripts/main.scpt
+
+# Personal: Claude setup, docs (plans, to-dos, inventory), local settings
+.claude/
+CLAUDE.md
+docs/
+.env
