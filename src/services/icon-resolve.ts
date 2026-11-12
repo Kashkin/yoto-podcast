@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { expandHome } from '../config.js';
-import { imageType, type createYotoService } from './yoto.js';
+import { imageType, isImageFile, type createYotoService } from './yoto.js';
 import { pickPublicIcon, parseYotoiconsId, downloadYotoicon, countYotoiconDownload } from './icons.js';
 import { iconPixelKey, userIconKeys, rememberIconKey } from './icon-library.js';
 import { parseTinkerId, downloadTinkerIcon } from './tinker.js';
@@ -42,7 +42,8 @@ async function uploadOrReuse(
 export async function resolveIcon(yoto: IconApi, icon: string, opts: { dryRun: boolean; baseDir?: string }): Promise<string> {
   if (icon.startsWith('yoto:#')) return icon;
   const path = resolve(opts.baseDir ?? process.cwd(), expandHome(icon));
-  if (existsSync(path)) {
+  // Only an image file name counts as a path, so a public icon called "docs" isn't read as the docs folder
+  if (isImageFile(path) && existsSync(path)) {
     const { ref } = await uploadOrReuse(yoto, readFileSync(path), imageType(path), basename(path), opts.dryRun);
     return ref ?? `(upload ${basename(path)})`;
   }

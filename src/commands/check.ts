@@ -1,8 +1,12 @@
-import type { PodcastConfig, FeedEpisode } from '../types.js';
+import { mkdirSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import type { PodcastConfig, FeedEpisode, YotoCard } from '../types.js';
+import type { UploadedTrack } from '../services/yoto.js';
 import { parseFeed, normalizeTitle, shouldSkip } from '../services/feed.js';
 import {
   getHighestEpisodeNumber,
   getLocalTitles,
+  getLocalEpisodes,
   formatFilename,
   detectPadWidth,
   downloadEpisode,
@@ -13,7 +17,6 @@ export interface CheckResult {
   name: string;
   newEpisodes: FeedEpisode[];
   skipped: FeedEpisode[];
-  downloaded: string[];
   errors: string[];
 }
 
@@ -29,7 +32,6 @@ export async function checkPodcast(
     name: podcast.name,
     newEpisodes: [],
     skipped: [],
-    downloaded: [],
     errors: [],
   };
 
@@ -97,6 +99,7 @@ export async function downloadNewEpisodes(
 ): Promise<{ downloaded: string[]; errors: string[] }> {
   const downloaded: string[] = [];
   const errors: string[] = [];
+  mkdirSync(podcast.directory, { recursive: true });
   let nextNum = getHighestEpisodeNumber(podcast.directory) + 1;
   const pad = detectPadWidth(podcast.directory);
 
@@ -114,8 +117,47 @@ export async function downloadNewEpisodes(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`${ep.title}: ${msg}`);
+      // The next run stops at the newest local episode, so a newer download would hide this one for good
+      break;
     }
   }
 
   return { downloaded, errors };
+}
+
+type PushApi = {
+  getCard: (cardId: string) => Promise<YotoCard>;
+  uploadAudioFile: (path: string) => Promise<UploadedTrack>;
+  prependTrackToCard: (cardId: string, title: string, track: UploadedTrack) => Promise<void>;
+};
+
+// Pushes every local episode numbered above the card's newest chapter, oldest first, so an
+// episode a failed run left on disk goes up on the next one. A card whose newest chapter
+// has no number gets only this run's downloads. Returns the titles pushed.
+export async function pushNewEpisodes(yoto: PushApi, podcast: PodcastConfig, downloaded: string[]): Promise<string[]> {
+  const pushed: string[] = [];
+  try {
+    const card = await yoto.getCard(podcast.cardId);
+    const top = card.content.chapters[0]?.title.match(/^(\d+) - /);
+    const pending = top
+      ? getLocalEpisodes(podcast.directory)
+          .filter((e) => e.number > Number(top[1]))
+          .map((e) => join(podcast.directory, e.file))
+      : downloaded;
+    if (pending.length > MAX_NEW_EPISODES) {
+      throw new Error(`${pending.length} episodes on disk are missing from the card (limit ${MAX_NEW_EPISODES}); use backfill`);
+    }
+    for (const path of pending) {
+      const title = basename(path, '.mp3');
+      console.log(`  Uploading to Yoto: ${title}`);
+      await yoto.prependTrackToCard(podcast.cardId, title, await yoto.uploadAudioFile(path));
+      console.log(`  Pushed to card: ${title}`);
+      pushed.push(title);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`  Yoto push failed: ${msg}`);
+    notify(`Podcast: ${podcast.name}`, `Not pushed to Yoto: ${msg}`);
+  }
+  return pushed;
 }

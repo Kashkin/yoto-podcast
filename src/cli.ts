@@ -6,7 +6,7 @@ import { loadConfig, yotoLibrary } from './config.js';
 import { prepareAlbum, printReport } from './commands/prepare.js';
 import { runAuth, getValidTokens } from './commands/auth.js';
 import type { StoredTokens } from './types.js';
-import { checkPodcast, downloadNewEpisodes } from './commands/check.js';
+import { checkPodcast, downloadNewEpisodes, pushNewEpisodes } from './commands/check.js';
 import { runBackfill } from './commands/backfill.js';
 import { runFixFormats } from './commands/fix-formats.js';
 import { createYotoService } from './services/yoto.js';
@@ -69,46 +69,28 @@ program
           }
         }
 
+        let downloaded: string[] = [];
         if (result.newEpisodes.length === 0) {
           console.log('  Up to date');
-          continue;
-        }
-
-        console.log(`  Found ${result.newEpisodes.length} new episode(s)`);
-
-        // Download
-        const { downloaded, errors } = await downloadNewEpisodes(
-          podcast,
-          result.newEpisodes
-        );
-        totalNew += downloaded.length;
-
-        // Upload to Yoto
-        if (yoto && podcast.cardId) {
-          for (let i = 0; i < downloaded.length; i++) {
-            const ep = result.newEpisodes[i];
-            const filePath = downloaded[i];
-            try {
-              console.log(`  Uploading to Yoto: ${ep.title}`);
-              const track = await yoto.uploadAudioFile(filePath);
-              const cardTitle = filePath.split('/').pop()?.replace(/\.mp3$/, '') ?? ep.title;
-              await yoto.prependTrackToCard(podcast.cardId, cardTitle, track);
-              console.log(`  Pushed to card: ${ep.title}`);
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err);
-              console.error(`  Yoto upload failed: ${msg}`);
-            }
+        } else {
+          console.log(`  Found ${result.newEpisodes.length} new episode(s)`);
+          const download = await downloadNewEpisodes(podcast, result.newEpisodes);
+          downloaded = download.downloaded;
+          totalNew += downloaded.length;
+          if (download.errors.length > 0) {
+            console.error(`  Download errors: ${download.errors.join(', ')}`);
           }
         }
 
-        if (errors.length > 0) {
-          console.error(`  Download errors: ${errors.join(', ')}`);
+        // Runs even when the feed has nothing new, to push episodes an earlier run left on disk
+        if (yoto && podcast.cardId) {
+          await pushNewEpisodes(yoto, podcast, downloaded);
         }
       }
 
       console.log(`\nDone. ${totalNew} new episode(s) downloaded.`);
       if (!yoto && totalNew > 0) {
-        console.log('Not pushed to Yoto (no valid token). Files are on disk; re-auth and push manually.');
+        console.log('Not pushed to Yoto (no valid token). Files are on disk; the next run after `yoto-podcast auth` pushes them.');
       }
     } catch (err) {
       // Any fatal error here previously died silently into the launchd log.
@@ -140,6 +122,7 @@ program
   .requiredOption('--dir <path>', 'Download directory')
   .requiredOption('--name <name>', 'Podcast name')
   .option('--card <cardId>', 'Yoto card ID')
+  .option('--dry-run', 'Show what would download and go on the card without writing', false)
   .action(async (options) => {
     await runBackfill(options, { configPath: CONFIG_PATH, tokensPath: TOKENS_PATH });
   });

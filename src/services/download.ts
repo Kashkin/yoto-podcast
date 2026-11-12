@@ -54,6 +54,16 @@ export function getLocalTitles(dir: string): string[] {
     .map((file) => file.replace(/^\d+ - /, '').replace(/\.mp3$/, ''));
 }
 
+// Numbered episode files ("NN - Title.mp3"), lowest number first.
+export function getLocalEpisodes(dir: string): { number: number; title: string; file: string }[] {
+  return listDir(dir)
+    .flatMap((file) => {
+      const match = file.match(/^(\d+) - (.*)\.mp3$/);
+      return match ? [{ number: parseInt(match[1], 10), title: match[2], file }] : [];
+    })
+    .sort((a, b) => a.number - b.number);
+}
+
 export async function downloadEpisode(
   url: string,
   outputPath: string

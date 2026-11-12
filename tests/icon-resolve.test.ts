@@ -17,7 +17,7 @@ function fakeYoto(library: { mediaId: string; url: string }[]) {
   return {
     getUserIcons: vi.fn(async () => library),
     uploadIcon: vi.fn(async () => 'yoto:#uploaded'),
-    getPublicIcons: vi.fn(async () => [{ mediaId: 'pub', title: 'Gold' }]),
+    getPublicIcons: vi.fn(async () => [{ mediaId: 'pub', title: 'Icons' }]),
   };
 }
 
@@ -78,6 +78,13 @@ describe('resolveIcon with an image path', () => {
     const ref = await resolveIcon(yoto, 'icons/gold.png', { dryRun: false, baseDir: join(DIR, 'album') });
     expect(ref).toBe('yoto:#uploaded');
     expect(yoto.getPublicIcons).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveIcon with a public icon name', () => {
+  it('looks up the name even when a folder of that name is in the album folder', async () => {
+    const yoto = fakeYoto([]);
+    expect(await resolveIcon(yoto, 'icons', { dryRun: false, baseDir: join(DIR, 'album') })).toBe('yoto:#pub');
   });
 });
 

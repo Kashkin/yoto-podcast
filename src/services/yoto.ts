@@ -31,6 +31,8 @@ const IMAGE_TYPES: Record<string, string> = {
   webp: 'image/webp',
 };
 
+export const isImageFile = (filePath: string) => (filePath.split('.').pop()?.toLowerCase() ?? '') in IMAGE_TYPES;
+
 export function imageType(filePath: string): string {
   const type = IMAGE_TYPES[filePath.split('.').pop()?.toLowerCase() ?? ''];
   if (!type) throw new Error(`Unsupported image type: ${filePath} (use jpg, png, gif or webp)`);
@@ -115,11 +117,7 @@ export function createYotoService(jwt: string, opts: { retryBaseMs?: number } = 
     },
 
     async getCard(cardId: string): Promise<YotoCard> {
-      return (await sdk.content.getCard(cardId)) as unknown as YotoCard;
-    },
-
-    async updateCard(card: YotoCard): Promise<void> {
-      await sdk.content.updateCard(card as never, true);
+      return (await retry(() => sdk.content.getCard(cardId))) as unknown as YotoCard;
     },
 
     async getMediaUrl(cardId: string, mediaId: string): Promise<string> {
@@ -159,7 +157,7 @@ export function createYotoService(jwt: string, opts: { retryBaseMs?: number } = 
         ch.overlayLabel = String(i + 1);
       }
 
-      await sdk.content.updateCard(card as never, true);
+      await this.saveCard(card);
     },
 
     async listCards(): Promise<YotoCard[]> {
@@ -167,8 +165,10 @@ export function createYotoService(jwt: string, opts: { retryBaseMs?: number } = 
     },
 
     // POST /content: creates a card when it has no cardId, otherwise replaces that card.
+    // Replacing a card is safe to repeat; creating one is not, so only a replace is retried.
     async saveCard(card: YotoCard): Promise<YotoCard> {
-      return (await sdk.content.updateCard(card as never, true)) as unknown as YotoCard;
+      const save = () => sdk.content.updateCard(card as never, true);
+      return (await (card.cardId ? retry(save) : save())) as unknown as YotoCard;
     },
 
     async getPublicIcons(): Promise<PublicIcon[]> {
@@ -203,11 +203,6 @@ export function createYotoService(jwt: string, opts: { retryBaseMs?: number } = 
       return displayIcons.filter((i) => !i.public).map(({ mediaId, url, createdAt }) => ({ mediaId, url, createdAt }));
     },
 
-    async getCardChapterCount(cardId: string): Promise<number> {
-      const card = await this.getCard(cardId);
-      return card.content.chapters.length;
-    },
-
     async setCardChapters(
       cardId: string,
       chapters: { title: string; track: UploadedTrack }[]
@@ -233,7 +228,7 @@ export function createYotoService(jwt: string, opts: { retryBaseMs?: number } = 
         ],
       }));
 
-      await sdk.content.updateCard(card as never, true);
+      await this.saveCard(card);
     },
   };
 }

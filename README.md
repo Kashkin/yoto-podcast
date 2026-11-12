@@ -104,9 +104,9 @@ npx tsx src/cli.ts backfill \
   --card abc12
 ```
 
-`check` is idempotent — running it twice in a row will report "Up to date" the second time.
+`check` is idempotent — running it twice in a row will report "Up to date" the second time. If a download fails, the run stops there for that podcast and the next run retries it. An episode that downloaded but didn't reach the card (Yoto was down, or the token had expired) is pushed on the next run: `check` pushes every local episode numbered above the card's newest chapter.
 
-`backfill` downloads missing files only (re-runs are safe), then if `--card` is given, replaces the card's chapter list with the full catalogue (newest first). Use it for first-time setup.
+`backfill` downloads missing files only (files already there are matched by title, so re-runs are safe), then if `--card` is given, replaces the card's chapter list with the full catalogue (newest first) and resets the chapter icons. Use it for first-time setup, and pass `--dry-run` first to see what it would download and put on the card.
 
 ## Make Your Own cards
 

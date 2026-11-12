@@ -67,7 +67,7 @@ export async function runFixFormats(
     );
 
     if (changed > 0 && !options.dryRun) {
-      await yoto.updateCard(card);
+      await yoto.saveCard(card);
       console.log(`  ✓ card updated`);
     } else if (changed > 0) {
       console.log(`  (dry-run, not writing)`);

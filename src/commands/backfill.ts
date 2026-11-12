@@ -1,6 +1,6 @@
-import { parseFeed } from '../services/feed.js';
-import { formatFilename, detectPadWidth, downloadEpisode } from '../services/download.js';
-import { mkdirSync, existsSync } from 'node:fs';
+import { parseFeed, normalizeTitle } from '../services/feed.js';
+import { formatFilename, detectPadWidth, downloadEpisode, getLocalEpisodes } from '../services/download.js';
+import { mkdirSync } from 'node:fs';
 import { notify } from '../services/notify.js';
 import { createYotoService, type UploadedTrack } from '../services/yoto.js';
 import { uploadTracks } from '../services/batch.js';
@@ -12,6 +12,7 @@ interface BackfillOptions {
   dir: string;
   name: string;
   card?: string;
+  dryRun?: boolean;
 }
 
 type CardApi = {
@@ -31,9 +32,9 @@ export async function pushToCard(yoto: CardApi, cardId: string, files: { title: 
 }
 
 export async function runBackfill(options: BackfillOptions, paths: Paths): Promise<void> {
-  const { feed, dir, name, card: cardId } = options;
+  const { feed, dir, name, card: cardId, dryRun = false } = options;
 
-  mkdirSync(dir, { recursive: true });
+  if (!dryRun) mkdirSync(dir, { recursive: true });
 
   console.log(`Fetching feed for: ${name}`);
   const res = await fetch(feed);
@@ -48,7 +49,14 @@ export async function runBackfill(options: BackfillOptions, paths: Paths): Promi
 
   // Episodes are newest-first; reverse for chronological download
   const chronological = [...episodes].reverse();
-  const pad = Math.max(detectPadWidth(dir), String(chronological.length).length);
+  // Files already here are matched by title and keep their names, so a feed that has grown
+  // or dropped old episodes doesn't download them again under new numbers
+  const local = new Map<string, string[]>();
+  for (const e of getLocalEpisodes(dir)) {
+    const key = normalizeTitle(e.title);
+    local.set(key, [...(local.get(key) ?? []), e.file]);
+  }
+  const pad = local.size ? detectPadWidth(dir) : Math.max(2, String(chronological.length).length);
 
   // Step 1: Download missing files
   console.log(`Found ${episodes.length} episodes. Downloading missing files...`);
@@ -58,13 +66,19 @@ export async function runBackfill(options: BackfillOptions, paths: Paths): Promi
 
   for (let i = 0; i < chronological.length; i++) {
     const ep = chronological[i];
-    const epNum = i + 1;
-    const filename = formatFilename(epNum, ep.title, pad);
+    const existing = local.get(normalizeTitle(ep.title))?.shift();
+    const filename = existing ?? formatFilename(i + 1, ep.title, pad);
     const outputPath = `${dir}/${filename}`;
 
-    if (existsSync(outputPath)) {
+    if (existing) {
       console.log(`  Exists: ${filename}`);
       filePaths.push({ title: filename.replace(/\.mp3$/, ''), path: outputPath });
+      continue;
+    }
+    if (dryRun) {
+      console.log(`  Would download: ${filename}`);
+      filePaths.push({ title: filename.replace(/\.mp3$/, ''), path: outputPath });
+      downloaded++;
       continue;
     }
 
@@ -80,7 +94,14 @@ export async function runBackfill(options: BackfillOptions, paths: Paths): Promi
     }
   }
 
-  console.log(`\nDownloads: ${downloaded} new, ${filePaths.length - downloaded} existed, ${failed} failed.`);
+  console.log(`\n${dryRun ? 'Would download' : 'Downloads:'} ${downloaded} new, ${filePaths.length - downloaded} existed, ${failed} failed.`);
+  if (dryRun) {
+    if (cardId) {
+      console.log(`\nWould replace every chapter on card ${cardId} with these ${filePaths.length} episode(s) and reset their icons to the default:`);
+      for (const f of [...filePaths].reverse()) console.log(`  ${f.title}`);
+    }
+    return;
+  }
 
   // Step 2: Upload to Yoto if card ID provided
   if (cardId) {
