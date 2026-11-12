@@ -131,17 +131,18 @@ type PushApi = {
   prependTrackToCard: (cardId: string, title: string, track: UploadedTrack) => Promise<void>;
 };
 
-// Pushes every local episode numbered above the card's newest chapter, oldest first, so an
-// episode a failed run left on disk goes up on the next one. A card whose newest chapter
-// has no number gets only this run's downloads. Returns the titles pushed.
+// Pushes every local episode numbered above the highest-numbered chapter on the card, oldest
+// first, so an episode a failed run left on disk goes up on the next one. A card with no
+// numbered chapters gets only this run's downloads. Returns the titles pushed.
 export async function pushNewEpisodes(yoto: PushApi, podcast: PodcastConfig, downloaded: string[]): Promise<string[]> {
   const pushed: string[] = [];
   try {
     const card = await yoto.getCard(podcast.cardId);
-    const top = card.content.chapters[0]?.title.match(/^(\d+) - /);
-    const pending = top
+    // The highest number anywhere on the card: some cards are kept oldest first
+    const onCard = card.content.chapters.flatMap((c) => c.title.match(/^(\d+) - /)?.[1] ?? []).map(Number);
+    const pending = onCard.length
       ? getLocalEpisodes(podcast.directory)
-          .filter((e) => e.number > Number(top[1]))
+          .filter((e) => e.number > Math.max(...onCard))
           .map((e) => join(podcast.directory, e.file))
       : downloaded;
     if (pending.length > MAX_NEW_EPISODES) {

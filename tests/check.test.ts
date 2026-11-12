@@ -196,8 +196,8 @@ describe('downloadNewEpisodes', () => {
 
 describe('pushNewEpisodes', () => {
   const track = { trackUrl: 'yoto:#t', format: 'opus' };
-  const fakeYoto = (topTitle?: string) => ({
-    getCard: vi.fn(async () => ({ title: 'Card', content: { chapters: topTitle ? [{ key: '00', title: topTitle, tracks: [] }] : [] } })),
+  const fakeYoto = (...titles: string[]) => ({
+    getCard: vi.fn(async () => ({ title: 'Card', content: { chapters: titles.map((title, i) => ({ key: String(i), title, tracks: [] })) } })),
     uploadAudioFile: vi.fn(async () => track),
     prependTrackToCard: vi.fn(async () => {}),
   });
@@ -220,6 +220,12 @@ describe('pushNewEpisodes', () => {
 
   it('pushes nothing when the card already has the newest episode', async () => {
     const yoto = fakeYoto('03 - Three');
+    expect(await pushNewEpisodes(yoto, PODCAST, [])).toEqual([]);
+    expect(yoto.uploadAudioFile).not.toHaveBeenCalled();
+  });
+
+  it('pushes nothing to a card kept oldest first that has every episode', async () => {
+    const yoto = fakeYoto('01 - One', '02 - Two', '03 - Three');
     expect(await pushNewEpisodes(yoto, PODCAST, [])).toEqual([]);
     expect(yoto.uploadAudioFile).not.toHaveBeenCalled();
   });
