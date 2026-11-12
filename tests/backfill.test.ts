@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pushToCard, runBackfill } from '../src/commands/backfill.js';
+import { DEFAULT_ICON } from '../src/services/yoto.js';
+import type { YotoChapter } from '../src/types.js';
 
 vi.mock('../src/services/notify.js', () => ({ notify: vi.fn() }));
 
@@ -10,15 +12,18 @@ const files = [
   { title: '02 - Two', path: '/eps/02 - Two.mp3' },
 ];
 const track = (id: string) => ({ trackUrl: `yoto:#${id}`, format: 'opus' });
+const card = () => ({ cardId: 'card', title: 'Show', content: { chapters: [{ key: 'old', title: 'Old', tracks: [] }] } });
 
 describe('pushToCard', () => {
   it('puts every episode on the card, newest first', async () => {
-    const yoto = { uploadAudioFile: vi.fn(async (path: string) => track(path.includes('One') ? 'a' : 'b')), setCardChapters: vi.fn() };
+    const yoto = { uploadAudioFile: vi.fn(async (path: string) => track(path.includes('One') ? 'a' : 'b')), getCard: vi.fn(async () => card()), saveIfUnchanged: vi.fn() };
     vi.spyOn(console, 'log').mockImplementation(() => {});
     await pushToCard(yoto, 'card', files);
-    expect(yoto.setCardChapters).toHaveBeenCalledWith('card', [
-      { title: '02 - Two', track: track('b') },
-      { title: '01 - One', track: track('a') },
+    const saved = yoto.saveIfUnchanged.mock.calls[0][1];
+    expect(saved.title).toBe('Show');
+    expect(saved.content.chapters.map((c: YotoChapter) => [c.title, c.overlayLabel, c.tracks[0].trackUrl, c.display?.icon16x16])).toEqual([
+      ['02 - Two', '1', 'yoto:#b', DEFAULT_ICON],
+      ['01 - One', '2', 'yoto:#a', DEFAULT_ICON],
     ]);
   });
 
@@ -28,11 +33,12 @@ describe('pushToCard', () => {
         if (path.includes('Two')) throw new Error('401 Unauthorized');
         return track('a');
       }),
-      setCardChapters: vi.fn(),
+      getCard: vi.fn(async () => card()),
+      saveIfUnchanged: vi.fn(),
     };
     vi.spyOn(console, 'log').mockImplementation(() => {});
     await expect(pushToCard(yoto, 'card', files)).rejects.toThrow(/1 of 2 track\(s\) failed to upload, so the card was left as it was[\s\S]*02 - Two: 401 Unauthorized/);
-    expect(yoto.setCardChapters).not.toHaveBeenCalled();
+    expect(yoto.saveIfUnchanged).not.toHaveBeenCalled();
   });
 });
 

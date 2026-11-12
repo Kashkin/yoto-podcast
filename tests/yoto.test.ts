@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createYotoService, imageType, DEFAULT_ICON } from '../src/services/yoto.js';
+import { createYotoService, imageType } from '../src/services/yoto.js';
 
 // Shared mock SDK instance so tests can inspect calls
 const mockSdk = {
@@ -85,42 +85,12 @@ describe('YotoService', () => {
     fetchSpy.mockRestore();
   });
 
-  it('prepends a chapter to the top of an existing card', async () => {
-    const service = createYotoService('test-jwt');
-    await service.prependTrackToCard('test-card', 'New Episode', {
-      trackUrl: 'yoto:#new-hash',
-      format: 'opus',
-      duration: 100,
-      fileSize: 12345,
-      channels: 'stereo',
-    });
-
-    expect(mockSdk.content.updateCard).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.objectContaining({
-          chapters: [
-            expect.objectContaining({ key: '00', title: 'New Episode' }),
-            expect.objectContaining({ key: '01', title: 'Episode 1' }),
-          ],
-        }),
-      }),
-      true
-    );
-  });
-});
-
-describe('prependTrackToCard icons', () => {
-  it('keeps the icons already on the card and gives only the new chapter the default', async () => {
-    mockSdk.content.getCard.mockResolvedValueOnce({
-      cardId: 'test-card',
-      title: 'Test Podcast',
-      content: {
-        chapters: [{ key: '00', title: 'Episode 1', display: { icon16x16: 'yoto:#dino' }, tracks: [{ key: '01', title: 'Episode 1', trackUrl: 'yoto:#abc' }] }],
-      },
-    });
-    await createYotoService('test-jwt').prependTrackToCard('test-card', 'New Episode', { trackUrl: 'yoto:#new', format: 'opus' });
-    const saved = mockSdk.content.updateCard.mock.calls.at(-1)![0];
-    expect(saved.content.chapters.map((c: { display?: { icon16x16: string } }) => c.display?.icon16x16)).toEqual([DEFAULT_ICON, 'yoto:#dino']);
+  it('refuses to save a card that changed since it was read', async () => {
+    const before = { cardId: 'test-card', title: 'T', updatedAt: '2026-01-01', content: { chapters: [] } };
+    mockSdk.content.getCard.mockResolvedValueOnce({ ...before, updatedAt: '2026-01-02' });
+    mockSdk.content.updateCard.mockClear();
+    await expect(createYotoService('test-jwt').saveIfUnchanged(before, { ...before, title: 'New' })).rejects.toThrow(/changed since it was read/);
+    expect(mockSdk.content.updateCard).not.toHaveBeenCalled();
   });
 });
 

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { checkPodcast, downloadNewEpisodes, pushNewEpisodes } from '../src/commands/check.js';
 import { notify } from '../src/services/notify.js';
+import { DEFAULT_ICON } from '../src/services/yoto.js';
+import type { YotoCard } from '../src/types.js';
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -196,11 +198,22 @@ describe('downloadNewEpisodes', () => {
 
 describe('pushNewEpisodes', () => {
   const track = { trackUrl: 'yoto:#t', format: 'opus' };
-  const fakeYoto = (...titles: string[]) => ({
-    getCard: vi.fn(async () => ({ title: 'Card', content: { chapters: titles.map((title, i) => ({ key: String(i), title, tracks: [] })) } })),
-    uploadAudioFile: vi.fn(async () => track),
-    prependTrackToCard: vi.fn(async () => {}),
-  });
+  // Holds a card and saves over it, like the real thing
+  const fakeYoto = (...titles: string[]) => {
+    let card: YotoCard = {
+      cardId: 'test-card',
+      title: 'Card',
+      content: { chapters: titles.map((title, i) => ({ key: String(i), title, overlayLabel: String(i + 1), display: { icon16x16: 'yoto:#dino' }, tracks: [] })) },
+    };
+    return {
+      getCard: vi.fn(async () => card),
+      uploadAudioFile: vi.fn(async () => track),
+      saveIfUnchanged: vi.fn(async (_before: YotoCard, after: YotoCard) => {
+        card = after;
+      }),
+      chapters: () => card.content.chapters,
+    };
+  };
 
   beforeEach(() => {
     mkdirSync(TEST_DIR, { recursive: true });
@@ -215,7 +228,14 @@ describe('pushNewEpisodes', () => {
   it('pushes episodes an earlier run left on disk, oldest first', async () => {
     const yoto = fakeYoto('01 - One');
     expect(await pushNewEpisodes(yoto, PODCAST, [])).toEqual(['02 - Two', '03 - Three']);
-    expect(yoto.prependTrackToCard.mock.calls.map((c) => c[1])).toEqual(['02 - Two', '03 - Three']);
+    expect(yoto.chapters().map((c) => c.title)).toEqual(['03 - Three', '02 - Two', '01 - One']);
+    expect(yoto.chapters().map((c) => c.overlayLabel)).toEqual(['1', '2', '3']);
+  });
+
+  it('keeps the icons already on the card and gives only the new chapter the default', async () => {
+    const yoto = fakeYoto('02 - Two');
+    await pushNewEpisodes(yoto, PODCAST, []);
+    expect(yoto.chapters().map((c) => c.display?.icon16x16)).toEqual([DEFAULT_ICON, 'yoto:#dino']);
   });
 
   it('pushes nothing when the card already has the newest episode', async () => {
@@ -237,7 +257,7 @@ describe('pushNewEpisodes', () => {
 
   it('stops and notifies when a push fails', async () => {
     const yoto = fakeYoto('01 - One');
-    yoto.prependTrackToCard.mockRejectedValueOnce(new Error('503'));
+    yoto.saveIfUnchanged.mockRejectedValueOnce(new Error('503'));
     expect(await pushNewEpisodes(yoto, PODCAST, [])).toEqual([]);
     expect(yoto.uploadAudioFile).toHaveBeenCalledOnce();
     expect(notify).toHaveBeenCalledWith('Podcast: Test', 'Not pushed to Yoto: 503');

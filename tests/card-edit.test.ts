@@ -7,6 +7,7 @@ import {
   setChapterIcon,
   replaceChapterAudio,
   addChapter,
+  replaceChapters,
   removeChapter,
   moveChapter,
   diffCards,
@@ -258,5 +259,21 @@ describe('assertUnchanged', () => {
     expect(() => assertUnchanged(at('2026-10-22T13:29:51Z'), at('2026-10-22T13:31:00Z'))).toThrow(
       /changed since it was read.*nothing was saved/s
     );
+  });
+});
+
+describe('replaceChapters', () => {
+  it('swaps in the new chapters, numbered from 1, and keeps the rest of the card', () => {
+    const card = appCard();
+    const next = replaceChapters(card, [
+      { title: 'B', track: track('b'), icon: 'yoto:#x' },
+      { title: 'A', track: track('a'), icon: 'yoto:#x' },
+    ]);
+    expect(next.content.chapters.map((c) => [c.title, c.overlayLabel, c.tracks[0].trackUrl])).toEqual([
+      ['B', '1', 'yoto:#b'],
+      ['A', '2', 'yoto:#a'],
+    ]);
+    expect(new Set(next.content.chapters.flatMap((c) => [c.key, c.tracks[0].key])).size).toBe(4);
+    expect({ ...next, content: { ...next.content, chapters: [] } }).toEqual({ ...card, content: { ...card.content, chapters: [] } });
   });
 });

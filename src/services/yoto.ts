@@ -1,10 +1,11 @@
 import { createYotoSdk } from '@yotoplay/yoto-sdk';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import type { YotoCard, YotoChapter } from '../types.js';
+import type { YotoCard } from '../types.js';
 import type { PublicIcon } from './icons.js';
 import type { UserIcon } from './icon-library.js';
 import { withRetry } from './batch.js';
+import { assertUnchanged } from './card-edit.js';
 
 export const DEFAULT_ICON = 'yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q';
 
@@ -124,42 +125,6 @@ export function createYotoService(jwt: string, opts: { retryBaseMs?: number } = 
       return sdk.media.getMediaUrl(cardId, mediaId);
     },
 
-    async prependTrackToCard(
-      cardId: string,
-      title: string,
-      track: UploadedTrack
-    ): Promise<void> {
-      const card = await this.getCard(cardId);
-
-      const newChapter: YotoChapter = {
-        key: '00',
-        title,
-        display: { icon16x16: DEFAULT_ICON },
-        tracks: [
-          {
-            key: '01',
-            title,
-            trackUrl: track.trackUrl,
-            format: track.format,
-            type: 'audio',
-            ...(track.duration !== undefined && { duration: track.duration }),
-            ...(track.fileSize !== undefined && { fileSize: track.fileSize }),
-            ...(track.channels !== undefined && { channels: track.channels }),
-          },
-        ],
-      };
-
-      // Prepend new chapter, then re-key all chapters; their icons stay as they are
-      card.content.chapters.unshift(newChapter);
-      for (let i = 0; i < card.content.chapters.length; i++) {
-        const ch = card.content.chapters[i];
-        ch.key = String(i).padStart(2, '0');
-        ch.overlayLabel = String(i + 1);
-      }
-
-      await this.saveCard(card);
-    },
-
     async listCards(): Promise<YotoCard[]> {
       return (await sdk.content.getMyCards()) as unknown as YotoCard[];
     },
@@ -169,6 +134,12 @@ export function createYotoService(jwt: string, opts: { retryBaseMs?: number } = 
     async saveCard(card: YotoCard): Promise<YotoCard> {
       const save = () => sdk.content.updateCard(card as never, true);
       return (await (card.cardId ? retry(save) : save())) as unknown as YotoCard;
+    },
+
+    // Edits are read-modify-write: refuses to save over a change made since `before` was read.
+    async saveIfUnchanged(before: YotoCard, after: YotoCard): Promise<YotoCard> {
+      assertUnchanged(before, await this.getCard(before.cardId!));
+      return this.saveCard(after);
     },
 
     async getPublicIcons(): Promise<PublicIcon[]> {
@@ -201,34 +172,6 @@ export function createYotoService(jwt: string, opts: { retryBaseMs?: number } = 
       if (!res.ok) throw new Error(`Listing your icons failed: ${res.status} ${await res.text()}`);
       const { displayIcons } = (await res.json()) as { displayIcons: (UserIcon & { public?: boolean })[] };
       return displayIcons.filter((i) => !i.public).map(({ mediaId, url, createdAt }) => ({ mediaId, url, createdAt }));
-    },
-
-    async setCardChapters(
-      cardId: string,
-      chapters: { title: string; track: UploadedTrack }[]
-    ): Promise<void> {
-      const card = await this.getCard(cardId);
-
-      card.content.chapters = chapters.map((ch, i) => ({
-        key: String(i).padStart(2, '0'),
-        title: ch.title,
-        overlayLabel: String(i + 1),
-        display: { icon16x16: DEFAULT_ICON },
-        tracks: [
-          {
-            key: '01',
-            title: ch.title,
-            trackUrl: ch.track.trackUrl,
-            format: ch.track.format,
-            type: 'audio',
-            ...(ch.track.duration !== undefined && { duration: ch.track.duration }),
-            ...(ch.track.fileSize !== undefined && { fileSize: ch.track.fileSize }),
-            ...(ch.track.channels !== undefined && { channels: ch.track.channels }),
-          },
-        ],
-      }));
-
-      await this.saveCard(card);
     },
   };
 }

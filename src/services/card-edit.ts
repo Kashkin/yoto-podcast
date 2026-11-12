@@ -155,6 +155,14 @@ export function addChapter(card: YotoCard, ch: NewChapter, at?: number): YotoCar
   return next;
 }
 
+// Replaces every chapter and leaves the rest of the card as it was.
+export function replaceChapters(card: YotoCard, chapters: NewChapter[]): YotoCard {
+  const next = structuredClone(card);
+  const used = new Set<string>();
+  next.content.chapters = chapters.map((ch, i) => makeChapter(ch, String(i + 1), used));
+  return next;
+}
+
 export function removeChapter(card: YotoCard, n: number): YotoCard {
   const next = structuredClone(card);
   chapterAt(next, n);

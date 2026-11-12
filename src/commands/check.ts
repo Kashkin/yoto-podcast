@@ -1,7 +1,8 @@
 import { mkdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { PodcastConfig, FeedEpisode, YotoCard } from '../types.js';
-import type { UploadedTrack } from '../services/yoto.js';
+import { DEFAULT_ICON, type UploadedTrack } from '../services/yoto.js';
+import { addChapter } from '../services/card-edit.js';
 import { parseFeed, normalizeTitle, shouldSkip } from '../services/feed.js';
 import {
   getHighestEpisodeNumber,
@@ -128,7 +129,7 @@ export async function downloadNewEpisodes(
 type PushApi = {
   getCard: (cardId: string) => Promise<YotoCard>;
   uploadAudioFile: (path: string) => Promise<UploadedTrack>;
-  prependTrackToCard: (cardId: string, title: string, track: UploadedTrack) => Promise<void>;
+  saveIfUnchanged: (before: YotoCard, after: YotoCard) => Promise<unknown>;
 };
 
 // Pushes every local episode numbered above the highest-numbered chapter on the card, oldest
@@ -151,7 +152,10 @@ export async function pushNewEpisodes(yoto: PushApi, podcast: PodcastConfig, dow
     for (const path of pending) {
       const title = basename(path, '.mp3');
       console.log(`  Uploading to Yoto: ${title}`);
-      await yoto.prependTrackToCard(podcast.cardId, title, await yoto.uploadAudioFile(path));
+      const track = await yoto.uploadAudioFile(path);
+      // Read again after the upload, which takes minutes, so the new chapter goes on the card as it is now
+      const before = await yoto.getCard(podcast.cardId);
+      await yoto.saveIfUnchanged(before, addChapter(before, { title, track, icon: DEFAULT_ICON }, 1));
       console.log(`  Pushed to card: ${title}`);
       pushed.push(title);
     }

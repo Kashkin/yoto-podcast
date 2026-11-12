@@ -59,8 +59,7 @@ async function editCard(
   console.log(`${dryRun ? 'Would change' : 'Changing'} "${before.title}" (${cardId}):`);
   for (const line of diff) console.log(`  ${line}`);
   if (dryRun) return;
-  edit.assertUnchanged(before, await yoto.getCard(cardId));
-  await yoto.saveCard(after);
+  await yoto.saveIfUnchanged(before, after);
   console.log('Saved.');
 }
 

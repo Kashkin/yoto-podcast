@@ -2,7 +2,9 @@ import { parseFeed, normalizeTitle } from '../services/feed.js';
 import { formatFilename, detectPadWidth, downloadEpisode, getLocalEpisodes } from '../services/download.js';
 import { mkdirSync } from 'node:fs';
 import { notify } from '../services/notify.js';
-import { createYotoService, type UploadedTrack } from '../services/yoto.js';
+import { createYotoService, DEFAULT_ICON, type UploadedTrack } from '../services/yoto.js';
+import { replaceChapters } from '../services/card-edit.js';
+import type { YotoCard } from '../types.js';
 import { uploadTracks } from '../services/batch.js';
 import { getValidTokens } from './auth.js';
 import type { Paths } from './myo.js';
@@ -17,7 +19,8 @@ interface BackfillOptions {
 
 type CardApi = {
   uploadAudioFile: (path: string, log?: (msg: string) => void) => Promise<UploadedTrack>;
-  setCardChapters: (cardId: string, chapters: { title: string; track: UploadedTrack }[]) => Promise<void>;
+  getCard: (cardId: string) => Promise<YotoCard>;
+  saveIfUnchanged: (before: YotoCard, after: YotoCard) => Promise<unknown>;
 };
 
 // Replaces the card's chapters with these episodes, newest first. Every upload must
@@ -25,9 +28,10 @@ type CardApi = {
 export async function pushToCard(yoto: CardApi, cardId: string, files: { title: string; path: string }[]): Promise<void> {
   console.log(`\nUploading ${files.length} episodes to Yoto...`);
   const tracks = await uploadTracks(files, (path, log) => yoto.uploadAudioFile(path, log), { ifFailed: 'the card was left as it was' });
-  const chapters = files.map((f, i) => ({ title: f.title, track: tracks[i] })).reverse();
+  const chapters = files.map((f, i) => ({ title: f.title, track: tracks[i], icon: DEFAULT_ICON })).reverse();
   console.log(`\nSetting ${chapters.length} chapters on card ${cardId}...`);
-  await yoto.setCardChapters(cardId, chapters);
+  const before = await yoto.getCard(cardId);
+  await yoto.saveIfUnchanged(before, replaceChapters(before, chapters));
   console.log('Card updated.');
 }
 
