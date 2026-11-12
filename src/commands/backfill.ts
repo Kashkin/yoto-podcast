@@ -20,7 +20,7 @@ interface BackfillOptions {
 type CardApi = {
   uploadAudioFile: (path: string, log?: (msg: string) => void) => Promise<UploadedTrack>;
   getCard: (cardId: string) => Promise<YotoCard>;
-  saveIfUnchanged: (before: YotoCard, after: YotoCard) => Promise<unknown>;
+  saveCard: (card: YotoCard) => Promise<unknown>;
 };
 
 // Replaces the card's chapters with these episodes, newest first. Every upload must
@@ -30,8 +30,7 @@ export async function pushToCard(yoto: CardApi, cardId: string, files: { title: 
   const tracks = await uploadTracks(files, (path, log) => yoto.uploadAudioFile(path, log), { ifFailed: 'the card was left as it was' });
   const chapters = files.map((f, i) => ({ title: f.title, track: tracks[i], icon: DEFAULT_ICON })).reverse();
   console.log(`\nSetting ${chapters.length} chapters on card ${cardId}...`);
-  const before = await yoto.getCard(cardId);
-  await yoto.saveIfUnchanged(before, replaceChapters(before, chapters));
+  await yoto.saveCard(replaceChapters(await yoto.getCard(cardId), chapters));
   console.log('Card updated.');
 }
 

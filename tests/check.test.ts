@@ -40,7 +40,7 @@ function fakeYoto(...titles: string[]) {
   return {
     getCard: vi.fn(async () => card),
     uploadAudioFile: vi.fn(async () => track),
-    saveIfUnchanged: vi.fn(async (_before: YotoCard, after: YotoCard) => {
+    saveCard: vi.fn(async (after: YotoCard) => {
       card = after;
     }),
     chapters: () => card.content.chapters.map((c) => c.title),
@@ -81,7 +81,7 @@ describe('runCheck: finding and downloading', () => {
 
     expect(await run(yoto)).toEqual({ name: 'Test', downloaded: [], pushed: [], errors: [] });
     expect(fetched).toHaveBeenCalledOnce();
-    expect(yoto.saveIfUnchanged).not.toHaveBeenCalled();
+    expect(yoto.saveCard).not.toHaveBeenCalled();
   });
 
   it('takes only the latest episode when the folder is empty', async () => {
@@ -166,6 +166,28 @@ describe('runCheck: finding and downloading', () => {
     expect(results[1].downloaded).toEqual([join(other, '01 - One.mp3')]);
   });
 
+  it('reports a podcast that crashes, notifies, and still checks the next one', async () => {
+    writeFileSync(join(TEST_DIR, 'a-file'), '');
+    serve(episodes(1));
+
+    const results = await runCheck(
+      { podcasts: [{ ...PODCAST, name: 'Crashes', directory: join(TEST_DIR, 'a-file') }, { ...PODCAST, directory: join(TEST_DIR, 'ok') }], yoto: { clientId: 'x' } },
+      null
+    );
+
+    expect(results[0].errors).toEqual([expect.stringContaining('ENOTDIR')]);
+    expect(notify).toHaveBeenCalledWith('Podcast: Crashes', expect.stringContaining('Check failed'));
+    expect(results[1].downloaded).toHaveLength(1);
+  });
+
+  it('reads the card once to see what is missing and once per episode pushed', async () => {
+    have('01 - Episode 1.mp3', '02 - Episode 2.mp3', '03 - Episode 3.mp3');
+    serve(episodes(3, 2, 1));
+    const yoto = fakeYoto('01 - Episode 1');
+    await run(yoto);
+    expect(yoto.getCard).toHaveBeenCalledTimes(3);
+  });
+
   it('downloads but pushes nothing without a Yoto connection', async () => {
     serve(episodes(1));
     const result = await run(null);
@@ -215,7 +237,7 @@ describe('runCheck: pushing to the card', () => {
 
   it('stops, reports and notifies when a push fails', async () => {
     const yoto = fakeYoto('01 - Episode 1');
-    yoto.saveIfUnchanged.mockRejectedValueOnce(new Error('503'));
+    yoto.saveCard.mockRejectedValueOnce(new Error('503'));
 
     const result = await run(yoto);
 

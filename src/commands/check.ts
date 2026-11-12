@@ -129,12 +129,11 @@ async function downloadNewEpisodes(
 type PushApi = {
   getCard: (cardId: string) => Promise<YotoCard>;
   uploadAudioFile: (path: string) => Promise<UploadedTrack>;
-  saveIfUnchanged: (before: YotoCard, after: YotoCard) => Promise<unknown>;
+  saveCard: (card: YotoCard) => Promise<unknown>;
 };
 
-// Pushes every local episode numbered above the highest-numbered chapter on the card, oldest
-// first, so an episode a failed run left on disk goes up on the next one. A card with no
-// numbered chapters gets only this run's downloads.
+// Pushes every local episode numbered above the highest chapter number on the card, oldest first.
+// A card with no numbered chapters gets only this run's downloads.
 async function pushNewEpisodes(
   yoto: PushApi,
   podcast: PodcastConfig,
@@ -161,8 +160,7 @@ async function pushNewEpisodes(
       // Read again after the upload, which takes minutes, so the new chapter goes on the card as it is now
       const before = await yoto.getCard(podcast.cardId);
       // Podcast cards are always numbered 1..n, so a gap left by a chapter deleted in the app is closed here
-      const after = renumberChapters(addChapter(before, { title, track, icon: DEFAULT_ICON }, 1));
-      await yoto.saveIfUnchanged(before, after);
+      await yoto.saveCard(renumberChapters(addChapter(before, { title, track, icon: DEFAULT_ICON }, 1)));
       console.log(`  Pushed to card: ${title}`);
       pushed.push(title);
     }
@@ -182,9 +180,8 @@ export interface PodcastResult {
   errors: string[];
 }
 
-// One check of every podcast: find its new episodes, download them, and push to its card
-// whatever the card lacks. `yoto` is null when there is no valid token; episodes still
-// download. A podcast that fails is reported in its result and the rest still run.
+// Checks every podcast: downloads its new episodes and pushes to its card whatever the card lacks.
+// `yoto` is null when there is no valid token. A podcast that fails doesn't stop the rest.
 export async function runCheck(config: AppConfig, yoto: PushApi | null, { force = false } = {}): Promise<PodcastResult[]> {
   console.log(`Checking ${config.podcasts.length} podcast(s)...`);
   const results: PodcastResult[] = [];
