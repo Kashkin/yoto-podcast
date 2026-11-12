@@ -6,7 +6,7 @@ import { loadConfig, yotoLibrary } from './config.js';
 import { prepareAlbum, printReport } from './commands/prepare.js';
 import { runAuth, getValidTokens } from './commands/auth.js';
 import type { StoredTokens } from './types.js';
-import { checkPodcast, downloadNewEpisodes, pushNewEpisodes } from './commands/check.js';
+import { runCheck } from './commands/check.js';
 import { runBackfill } from './commands/backfill.js';
 import { runFixFormats } from './commands/fix-formats.js';
 import { createYotoService } from './services/yoto.js';
@@ -31,7 +31,7 @@ program
 program
   .command('check')
   .description('Check all feeds for new episodes, download, and push to Yoto')
-  .option('--force', 'Download even if a feed shows more than 5 new episodes', false)
+  .option('--force', 'Download and push even when more than 5 episodes are new', false)
   .action(async (options) => {
     try {
       console.log(`\n--- yoto-podcast check @ ${new Date().toLocaleString()} ---`);
@@ -51,47 +51,15 @@ program
 
       const yoto = tokens ? createYotoService(tokens.accessToken) : null;
 
-      console.log(`Checking ${config.podcasts.length} podcast(s)...`);
-      let totalNew = 0;
-
-      for (const podcast of config.podcasts) {
-        console.log(`\n=== ${podcast.name} ===`);
-        const result = await checkPodcast(podcast, { force: options.force });
-
-        if (result.errors.length > 0) {
-          console.error(`  Errors: ${result.errors.join(', ')}`);
-          continue;
-        }
-
-        if (result.skipped.length > 0) {
-          for (const ep of result.skipped) {
-            console.log(`  Skipping (matched skip pattern): ${ep.title}`);
-          }
-        }
-
-        let downloaded: string[] = [];
-        if (result.newEpisodes.length === 0) {
-          console.log('  Up to date');
-        } else {
-          console.log(`  Found ${result.newEpisodes.length} new episode(s)`);
-          const download = await downloadNewEpisodes(podcast, result.newEpisodes);
-          downloaded = download.downloaded;
-          totalNew += downloaded.length;
-          if (download.errors.length > 0) {
-            console.error(`  Download errors: ${download.errors.join(', ')}`);
-          }
-        }
-
-        // Runs even when the feed has nothing new, to push episodes an earlier run left on disk
-        if (yoto && podcast.cardId) {
-          await pushNewEpisodes(yoto, podcast, downloaded);
-        }
-      }
+      const results = await runCheck(config, yoto, { force: options.force });
+      const totalNew = results.reduce((n, r) => n + r.downloaded.length, 0);
 
       console.log(`\nDone. ${totalNew} new episode(s) downloaded.`);
       if (!yoto && totalNew > 0) {
         console.log('Not pushed to Yoto (no valid token). Files are on disk; the next run after `yoto-podcast auth` pushes them.');
       }
+      // So `launchctl list` shows a run that needs attention
+      if (!yoto || results.some((r) => r.errors.length > 0)) process.exitCode = 1;
     } catch (err) {
       // Any fatal error here previously died silently into the launchd log.
       const msg = err instanceof Error ? err.message : String(err);

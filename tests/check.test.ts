@@ -1,272 +1,232 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { checkPodcast, downloadNewEpisodes, pushNewEpisodes } from '../src/commands/check.js';
-import { notify } from '../src/services/notify.js';
-import { DEFAULT_ICON } from '../src/services/yoto.js';
-import type { YotoCard } from '../src/types.js';
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { runCheck } from '../src/commands/check.js';
+import { notify } from '../src/services/notify.js';
+import { DEFAULT_ICON } from '../src/services/yoto.js';
+import type { PodcastConfig, YotoCard } from '../src/types.js';
 
 vi.mock('../src/services/notify.js', () => ({ notify: vi.fn() }));
 
 const TEST_DIR = join(import.meta.dirname, '.test-check');
+const FEED = 'https://example.com/feed.xml';
+const PODCAST: PodcastConfig = { name: 'Test', feedUrl: FEED, directory: TEST_DIR, cardId: 'test-card', skipPatterns: [] };
+const track = { trackUrl: 'yoto:#t', format: 'opus' };
 
-const PODCAST = {
-  name: 'Test',
-  feedUrl: 'https://example.com/feed.xml',
-  directory: TEST_DIR,
-  cardId: 'test-card',
-  skipPatterns: [],
-};
+const audioUrl = (title: string) => `https://example.com/${encodeURIComponent(title)}.mp3`;
+const episodes = (...numbers: number[]) => numbers.map((n) => `Episode ${n}`);
+const have = (...files: string[]) => files.forEach((f) => writeFileSync(join(TEST_DIR, f), ''));
+const files = () => readdirSync(TEST_DIR).sort();
 
-// Newest first, like a real feed
-function feedXml(titles: string[]): string {
-  const items = titles
-    .map((t, i) => `<item><title>${t}</title><enclosure url="https://example.com/${i}.mp3"/></item>`)
-    .join('');
-  return `<?xml version="1.0"?><rss version="2.0"><channel>${items}</channel></rss>`;
+// Serves a feed of these titles (newest first, like a real feed) and each episode's audio.
+// Audio for a title in `failing` returns 503.
+function serve(titles: string[], failing: string[] = []) {
+  const items = titles.map((t) => `<item><title>${t}</title><enclosure url="${audioUrl(t)}"/></item>`).join('');
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === FEED) return new Response(`<?xml version="1.0"?><rss version="2.0"><channel>${items}</channel></rss>`);
+    if (failing.some((t) => url === audioUrl(t))) return new Response('', { status: 503 });
+    return new Response('audio');
+  });
 }
 
-const MOCK_FEED_XML = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
-  <channel>
-    <title>Test Podcast</title>
-    <item>
-      <title>Episode 3</title>
-      <enclosure url="https://example.com/ep3.mp3" type="audio/mpeg"/>
-    </item>
-    <item>
-      <title>Episode 2</title>
-      <enclosure url="https://example.com/ep2.mp3" type="audio/mpeg"/>
-    </item>
-    <item>
-      <title>Episode 1</title>
-      <enclosure url="https://example.com/ep1.mp3" type="audio/mpeg"/>
-    </item>
-  </channel>
-</rss>`;
+// Holds a card with these chapter titles and saves over it, like the real thing
+function fakeYoto(...titles: string[]) {
+  let card: YotoCard = {
+    cardId: 'test-card',
+    title: 'Card',
+    content: { chapters: titles.map((title, i) => ({ key: String(i), title, overlayLabel: String(i + 1), display: { icon16x16: 'yoto:#dino' }, tracks: [] })) },
+  };
+  return {
+    getCard: vi.fn(async () => card),
+    uploadAudioFile: vi.fn(async () => track),
+    saveIfUnchanged: vi.fn(async (_before: YotoCard, after: YotoCard) => {
+      card = after;
+    }),
+    chapters: () => card.content.chapters.map((c) => c.title),
+    card: () => card,
+  };
+}
 
-describe('checkPodcast', () => {
-  beforeEach(() => {
-    mkdirSync(TEST_DIR, { recursive: true });
-    vi.restoreAllMocks();
-    vi.mocked(notify).mockClear();
-  });
-  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+async function run(yoto: ReturnType<typeof fakeYoto> | null = fakeYoto(), opts?: { force?: boolean }, podcast = PODCAST) {
+  const [result] = await runCheck({ podcasts: [podcast], yoto: { clientId: 'x' } }, yoto, opts);
+  return result;
+}
 
-  it('detects new episodes and returns them', async () => {
-    // Local has episodes 1 and 2
-    writeFileSync(join(TEST_DIR, '01 - Episode 1.mp3'), '');
-    writeFileSync(join(TEST_DIR, '02 - Episode 2.mp3'), '');
-
-    // Mock feed fetch
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(MOCK_FEED_XML, { status: 200 })
-    );
-
-    const result = await checkPodcast({
-      name: 'Test',
-      feedUrl: 'https://example.com/feed.xml',
-      directory: TEST_DIR,
-      cardId: 'test-card',
-      skipPatterns: [],
-    });
-
-    expect(result.newEpisodes).toHaveLength(1);
-    expect(result.newEpisodes[0].title).toBe('Episode 3');
-  });
-
-  it('returns empty when up to date', async () => {
-    writeFileSync(join(TEST_DIR, '01 - Episode 1.mp3'), '');
-    writeFileSync(join(TEST_DIR, '02 - Episode 2.mp3'), '');
-    writeFileSync(join(TEST_DIR, '03 - Episode 3.mp3'), '');
-
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(MOCK_FEED_XML, { status: 200 })
-    );
-
-    const result = await checkPodcast({
-      name: 'Test',
-      feedUrl: 'https://example.com/feed.xml',
-      directory: TEST_DIR,
-      cardId: 'test-card',
-      skipPatterns: [],
-    });
-
-    expect(result.newEpisodes).toHaveLength(0);
-  });
-
-  it('reports a feed that cannot be reached instead of throwing', async () => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('fetch failed'));
-    const result = await checkPodcast(PODCAST);
-    expect(result.errors).toEqual(['Failed to fetch feed: fetch failed']);
-  });
-
-  it('respects skip patterns', async () => {
-    writeFileSync(join(TEST_DIR, '01 - Episode 1.mp3'), '');
-    writeFileSync(join(TEST_DIR, '02 - Episode 2.mp3'), '');
-
-    const feedWithReplay = MOCK_FEED_XML.replace(
-      'Episode 3',
-      'Episode 3 (Replay)'
-    );
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(feedWithReplay, { status: 200 })
-    );
-
-    const result = await checkPodcast({
-      name: 'Test',
-      feedUrl: 'https://example.com/feed.xml',
-      directory: TEST_DIR,
-      cardId: 'test-card',
-      skipPatterns: ['(Replay)'],
-    });
-
-    expect(result.newEpisodes).toHaveLength(0);
-    expect(result.skipped).toHaveLength(1);
-  });
-
-  it('stops at an older local episode when the newest is renamed in the feed', async () => {
-    writeFileSync(join(TEST_DIR, '01 - Episode 1.mp3'), '');
-    writeFileSync(join(TEST_DIR, '02 - Episode 2.mp3'), '');
-    writeFileSync(join(TEST_DIR, '03 - Episode 3.mp3'), '');
-
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(feedXml(['Episode 3 Remastered', 'Episode 2', 'Episode 1']), { status: 200 })
-    );
-
-    const result = await checkPodcast(PODCAST);
-
-    expect(result.newEpisodes.map((e) => e.title)).toEqual(['Episode 3 Remastered']);
-  });
-
-  it('refuses to download more than 5 new episodes at once', async () => {
-    writeFileSync(join(TEST_DIR, '01 - Episode 1.mp3'), '');
-    const titles = [7, 6, 5, 4, 3, 2, 1].map((n) => `Episode ${n}`);
-
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(feedXml(titles), { status: 200 })
-    );
-
-    const result = await checkPodcast(PODCAST);
-
-    expect(result.newEpisodes).toHaveLength(0);
-    expect(result.errors).toHaveLength(1);
-    expect(notify).toHaveBeenCalledOnce();
-  });
-
-  it('downloads more than 5 new episodes when forced', async () => {
-    writeFileSync(join(TEST_DIR, '01 - Episode 1.mp3'), '');
-    const titles = [7, 6, 5, 4, 3, 2, 1].map((n) => `Episode ${n}`);
-
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(feedXml(titles), { status: 200 })
-    );
-
-    const result = await checkPodcast(PODCAST, { force: true });
-
-    expect(result.newEpisodes).toHaveLength(6);
-    expect(result.errors).toHaveLength(0);
-  });
+beforeEach(() => {
+  mkdirSync(TEST_DIR, { recursive: true });
+  vi.restoreAllMocks();
+  vi.mocked(notify).mockClear();
+  vi.spyOn(console, 'log').mockImplementation(() => {});
+  vi.spyOn(console, 'error').mockImplementation(() => {});
 });
+afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
 
-describe('downloadNewEpisodes', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    vi.spyOn(console, 'log').mockImplementation(() => {});
+describe('runCheck: finding and downloading', () => {
+  it('downloads a new episode and puts it on top of the card', async () => {
+    have('01 - Episode 1.mp3', '02 - Episode 2.mp3');
+    serve(episodes(3, 2, 1));
+    const yoto = fakeYoto('02 - Episode 2', '01 - Episode 1');
+
+    const result = await run(yoto);
+
+    expect(result).toEqual({ name: 'Test', downloaded: [join(TEST_DIR, '03 - Episode 3.mp3')], pushed: ['03 - Episode 3'], errors: [] });
+    expect(yoto.chapters()).toEqual(['03 - Episode 3', '02 - Episode 2', '01 - Episode 1']);
   });
-  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
 
-  const episodes = ['One', 'Two', 'Three'].map((title, i) => ({ title, url: `https://example.com/${title}.mp3`, index: 3 - i }));
+  it('does nothing when the folder and card are up to date', async () => {
+    have('01 - Episode 1.mp3', '02 - Episode 2.mp3', '03 - Episode 3.mp3');
+    const fetched = serve(episodes(3, 2, 1));
+    const yoto = fakeYoto('03 - Episode 3');
 
-  it('stops at the first failed download so the next run retries it', async () => {
-    mkdirSync(TEST_DIR, { recursive: true });
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
-      String(url).includes('Two') ? new Response('', { status: 503 }) : new Response('audio')
-    );
-    const { downloaded, errors } = await downloadNewEpisodes(PODCAST, episodes);
-    expect(downloaded).toEqual([join(TEST_DIR, '01 - One.mp3')]);
-    expect(errors).toEqual(['Two: Download failed: 503']);
-    expect(readdirSync(TEST_DIR)).toEqual(['01 - One.mp3']);
+    expect(await run(yoto)).toEqual({ name: 'Test', downloaded: [], pushed: [], errors: [] });
+    expect(fetched).toHaveBeenCalledOnce();
+    expect(yoto.saveIfUnchanged).not.toHaveBeenCalled();
+  });
+
+  it('takes only the latest episode when the folder is empty', async () => {
+    serve(episodes(3, 2, 1));
+    await run();
+    expect(files()).toEqual(['01 - Episode 3.mp3']);
   });
 
   it('creates the podcast directory', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('audio'));
-    const { downloaded } = await downloadNewEpisodes(PODCAST, episodes.slice(0, 1));
-    expect(downloaded).toEqual([join(TEST_DIR, '01 - One.mp3')]);
+    rmSync(TEST_DIR, { recursive: true });
+    serve(episodes(1));
+    expect((await run()).downloaded).toEqual([join(TEST_DIR, '01 - Episode 1.mp3')]);
+  });
+
+  it('skips episodes matching a skip pattern', async () => {
+    have('01 - Episode 1.mp3', '02 - Episode 2.mp3');
+    serve(['Episode 3 (Replay)', 'Episode 2', 'Episode 1']);
+    const result = await run(fakeYoto('02 - Episode 2'), {}, { ...PODCAST, skipPatterns: ['(Replay)'] });
+    expect(result.downloaded).toEqual([]);
+    expect(files()).toHaveLength(2);
+  });
+
+  it('stops at an older local episode when the newest is renamed in the feed', async () => {
+    have('01 - Episode 1.mp3', '02 - Episode 2.mp3', '03 - Episode 3.mp3');
+    serve(['Episode 3 Remastered', 'Episode 2', 'Episode 1']);
+    await run();
+    expect(files()).toEqual(['01 - Episode 1.mp3', '02 - Episode 2.mp3', '03 - Episode 3.mp3', '04 - Episode 3 Remastered.mp3']);
+  });
+
+  it('refuses to download more than 5 new episodes at once', async () => {
+    have('01 - Episode 1.mp3');
+    serve(episodes(7, 6, 5, 4, 3, 2, 1));
+
+    const result = await run();
+
+    expect(result.downloaded).toEqual([]);
+    expect(result.errors).toEqual([expect.stringContaining('6 new episodes found (limit 5)')]);
+    expect(files()).toEqual(['01 - Episode 1.mp3']);
+    expect(notify).toHaveBeenCalledOnce();
+  });
+
+  it('downloads and pushes more than 5 new episodes when forced', async () => {
+    have('01 - Episode 1.mp3');
+    serve(episodes(7, 6, 5, 4, 3, 2, 1));
+
+    const result = await run(fakeYoto('01 - Episode 1'), { force: true });
+
+    expect(result.downloaded).toHaveLength(6);
+    expect(result.pushed).toHaveLength(6);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('stops at the first failed download and picks it up on the next run', async () => {
+    have('01 - Episode 1.mp3');
+    const yoto = fakeYoto('01 - Episode 1');
+
+    serve(episodes(4, 3, 2, 1), ['Episode 3']);
+    const first = await run(yoto);
+    expect(first.errors).toEqual(['Episode 3: Download failed: 503']);
+    expect(files()).toEqual(['01 - Episode 1.mp3', '02 - Episode 2.mp3']);
+
+    vi.mocked(globalThis.fetch).mockRestore();
+    serve(episodes(4, 3, 2, 1));
+    const second = await run(yoto);
+    expect(second.errors).toEqual([]);
+    expect(yoto.chapters()).toEqual(['04 - Episode 4', '03 - Episode 3', '02 - Episode 2', '01 - Episode 1']);
+  });
+
+  it('reports a feed that cannot be reached and still checks the next podcast', async () => {
+    const other = join(TEST_DIR, 'other');
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      if (String(input) === 'https://example.com/broken.xml') throw new TypeError('fetch failed');
+      return new Response(String(input) === FEED ? '<rss><channel><item><title>One</title><enclosure url="https://example.com/1.mp3"/></item></channel></rss>' : 'audio');
+    });
+
+    const results = await runCheck(
+      { podcasts: [{ ...PODCAST, name: 'Broken', feedUrl: 'https://example.com/broken.xml' }, { ...PODCAST, directory: other }], yoto: { clientId: 'x' } },
+      null
+    );
+
+    expect(results[0].errors).toEqual(['Failed to fetch feed: fetch failed']);
+    expect(results[1].downloaded).toEqual([join(other, '01 - One.mp3')]);
+  });
+
+  it('downloads but pushes nothing without a Yoto connection', async () => {
+    serve(episodes(1));
+    const result = await run(null);
+    expect(result.downloaded).toHaveLength(1);
+    expect(result.pushed).toEqual([]);
+    expect(result.errors).toEqual([]);
   });
 });
 
-describe('pushNewEpisodes', () => {
-  const track = { trackUrl: 'yoto:#t', format: 'opus' };
-  // Holds a card and saves over it, like the real thing
-  const fakeYoto = (...titles: string[]) => {
-    let card: YotoCard = {
-      cardId: 'test-card',
-      title: 'Card',
-      content: { chapters: titles.map((title, i) => ({ key: String(i), title, overlayLabel: String(i + 1), display: { icon16x16: 'yoto:#dino' }, tracks: [] })) },
-    };
-    return {
-      getCard: vi.fn(async () => card),
-      uploadAudioFile: vi.fn(async () => track),
-      saveIfUnchanged: vi.fn(async (_before: YotoCard, after: YotoCard) => {
-        card = after;
-      }),
-      chapters: () => card.content.chapters,
-    };
-  };
-
+describe('runCheck: pushing to the card', () => {
   beforeEach(() => {
-    mkdirSync(TEST_DIR, { recursive: true });
-    for (const f of ['01 - One.mp3', '02 - Two.mp3', '03 - Three.mp3']) writeFileSync(join(TEST_DIR, f), '');
-    vi.restoreAllMocks();
-    vi.mocked(notify).mockClear();
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    have('01 - Episode 1.mp3', '02 - Episode 2.mp3', '03 - Episode 3.mp3');
+    serve(episodes(3, 2, 1));
   });
-  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
 
   it('pushes episodes an earlier run left on disk, oldest first', async () => {
-    const yoto = fakeYoto('01 - One');
-    expect(await pushNewEpisodes(yoto, PODCAST, [])).toEqual(['02 - Two', '03 - Three']);
-    expect(yoto.chapters().map((c) => c.title)).toEqual(['03 - Three', '02 - Two', '01 - One']);
-    expect(yoto.chapters().map((c) => c.overlayLabel)).toEqual(['1', '2', '3']);
+    const yoto = fakeYoto('01 - Episode 1');
+    expect((await run(yoto)).pushed).toEqual(['02 - Episode 2', '03 - Episode 3']);
+    expect(yoto.chapters()).toEqual(['03 - Episode 3', '02 - Episode 2', '01 - Episode 1']);
+    expect(yoto.card().content.chapters.map((c) => c.overlayLabel)).toEqual(['1', '2', '3']);
   });
 
   it('keeps the icons already on the card and gives only the new chapter the default', async () => {
-    const yoto = fakeYoto('02 - Two');
-    await pushNewEpisodes(yoto, PODCAST, []);
-    expect(yoto.chapters().map((c) => c.display?.icon16x16)).toEqual([DEFAULT_ICON, 'yoto:#dino']);
-  });
-
-  it('pushes nothing when the card already has the newest episode', async () => {
-    const yoto = fakeYoto('03 - Three');
-    expect(await pushNewEpisodes(yoto, PODCAST, [])).toEqual([]);
-    expect(yoto.uploadAudioFile).not.toHaveBeenCalled();
+    const yoto = fakeYoto('02 - Episode 2');
+    await run(yoto);
+    expect(yoto.card().content.chapters.map((c) => c.display?.icon16x16)).toEqual([DEFAULT_ICON, 'yoto:#dino']);
   });
 
   it('pushes nothing to a card kept oldest first that has every episode', async () => {
-    const yoto = fakeYoto('01 - One', '02 - Two', '03 - Three');
-    expect(await pushNewEpisodes(yoto, PODCAST, [])).toEqual([]);
+    const yoto = fakeYoto('01 - Episode 1', '02 - Episode 2', '03 - Episode 3');
+    expect((await run(yoto)).pushed).toEqual([]);
     expect(yoto.uploadAudioFile).not.toHaveBeenCalled();
   });
 
-  it("pushes only this run's downloads when the card's newest chapter has no number", async () => {
+  it("pushes only this run's downloads when the card has no numbered chapters", async () => {
+    serve(episodes(4, 3, 2, 1));
     const yoto = fakeYoto('Welcome');
-    expect(await pushNewEpisodes(yoto, PODCAST, [join(TEST_DIR, '03 - Three.mp3')])).toEqual(['03 - Three']);
+    expect((await run(yoto)).pushed).toEqual(['04 - Episode 4']);
   });
 
-  it('stops and notifies when a push fails', async () => {
-    const yoto = fakeYoto('01 - One');
+  it('stops, reports and notifies when a push fails', async () => {
+    const yoto = fakeYoto('01 - Episode 1');
     yoto.saveIfUnchanged.mockRejectedValueOnce(new Error('503'));
-    expect(await pushNewEpisodes(yoto, PODCAST, [])).toEqual([]);
+
+    const result = await run(yoto);
+
+    expect(result.pushed).toEqual([]);
+    expect(result.errors).toEqual(['Not pushed to Yoto: 503']);
     expect(yoto.uploadAudioFile).toHaveBeenCalledOnce();
     expect(notify).toHaveBeenCalledWith('Podcast: Test', 'Not pushed to Yoto: 503');
   });
 
   it('refuses to push more than 5 episodes at once', async () => {
-    for (let n = 4; n <= 8; n++) writeFileSync(join(TEST_DIR, `0${n} - Ep ${n}.mp3`), '');
-    const yoto = fakeYoto('01 - One');
-    expect(await pushNewEpisodes(yoto, PODCAST, [])).toEqual([]);
+    for (let n = 4; n <= 8; n++) have(`0${n} - Episode ${n}.mp3`);
+    serve(episodes(8, 7, 6, 5, 4, 3, 2, 1));
+    const yoto = fakeYoto('01 - Episode 1');
+
+    const result = await run(yoto);
+
+    expect(result.pushed).toEqual([]);
+    expect(result.errors).toEqual([expect.stringContaining('7 episodes on disk are missing from the card')]);
     expect(yoto.uploadAudioFile).not.toHaveBeenCalled();
     expect(notify).toHaveBeenCalledOnce();
   });

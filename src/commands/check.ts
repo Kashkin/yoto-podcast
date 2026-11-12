@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import type { PodcastConfig, FeedEpisode, YotoCard } from '../types.js';
+import type { AppConfig, PodcastConfig, FeedEpisode, YotoCard } from '../types.js';
 import { DEFAULT_ICON, type UploadedTrack } from '../services/yoto.js';
 import { addChapter } from '../services/card-edit.js';
 import { parseFeed, normalizeTitle, shouldSkip } from '../services/feed.js';
@@ -14,7 +14,7 @@ import {
 } from '../services/download.js';
 import { notify } from '../services/notify.js';
 
-export interface CheckResult {
+interface CheckResult {
   name: string;
   newEpisodes: FeedEpisode[];
   skipped: FeedEpisode[];
@@ -25,7 +25,7 @@ export interface CheckResult {
 // retitled, not that the show really released them all.
 const MAX_NEW_EPISODES = 5;
 
-export async function checkPodcast(
+async function checkPodcast(
   podcast: PodcastConfig,
   { force = false } = {}
 ): Promise<CheckResult> {
@@ -94,7 +94,7 @@ export async function checkPodcast(
   return result;
 }
 
-export async function downloadNewEpisodes(
+async function downloadNewEpisodes(
   podcast: PodcastConfig,
   episodes: FeedEpisode[]
 ): Promise<{ downloaded: string[]; errors: string[] }> {
@@ -134,8 +134,13 @@ type PushApi = {
 
 // Pushes every local episode numbered above the highest-numbered chapter on the card, oldest
 // first, so an episode a failed run left on disk goes up on the next one. A card with no
-// numbered chapters gets only this run's downloads. Returns the titles pushed.
-export async function pushNewEpisodes(yoto: PushApi, podcast: PodcastConfig, downloaded: string[]): Promise<string[]> {
+// numbered chapters gets only this run's downloads.
+async function pushNewEpisodes(
+  yoto: PushApi,
+  podcast: PodcastConfig,
+  downloaded: string[],
+  force: boolean
+): Promise<{ pushed: string[]; error?: string }> {
   const pushed: string[] = [];
   try {
     const card = await yoto.getCard(podcast.cardId);
@@ -146,8 +151,8 @@ export async function pushNewEpisodes(yoto: PushApi, podcast: PodcastConfig, dow
           .filter((e) => e.number > Math.max(...onCard))
           .map((e) => join(podcast.directory, e.file))
       : downloaded;
-    if (pending.length > MAX_NEW_EPISODES) {
-      throw new Error(`${pending.length} episodes on disk are missing from the card (limit ${MAX_NEW_EPISODES}); use backfill`);
+    if (!force && pending.length > MAX_NEW_EPISODES) {
+      throw new Error(`${pending.length} episodes on disk are missing from the card (limit ${MAX_NEW_EPISODES}); run \`check --force\` or backfill`);
     }
     for (const path of pending) {
       const title = basename(path, '.mp3');
@@ -159,10 +164,65 @@ export async function pushNewEpisodes(yoto: PushApi, podcast: PodcastConfig, dow
       console.log(`  Pushed to card: ${title}`);
       pushed.push(title);
     }
+    return { pushed };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`  Yoto push failed: ${msg}`);
-    notify(`Podcast: ${podcast.name}`, `Not pushed to Yoto: ${msg}`);
+    const error = `Not pushed to Yoto: ${err instanceof Error ? err.message : String(err)}`;
+    console.error(`  ${error}`);
+    notify(`Podcast: ${podcast.name}`, error);
+    return { pushed, error };
   }
-  return pushed;
+}
+
+export interface PodcastResult {
+  name: string;
+  downloaded: string[]; // files saved this run
+  pushed: string[]; // chapter titles put on the card this run
+  errors: string[];
+}
+
+// One check of every podcast: find its new episodes, download them, and push to its card
+// whatever the card lacks. `yoto` is null when there is no valid token; episodes still
+// download. A podcast that fails is reported in its result and the rest still run.
+export async function runCheck(config: AppConfig, yoto: PushApi | null, { force = false } = {}): Promise<PodcastResult[]> {
+  console.log(`Checking ${config.podcasts.length} podcast(s)...`);
+  const results: PodcastResult[] = [];
+  for (const podcast of config.podcasts) {
+    console.log(`\n=== ${podcast.name} ===`);
+    const result: PodcastResult = { name: podcast.name, downloaded: [], pushed: [], errors: [] };
+    results.push(result);
+    try {
+      const found = await checkPodcast(podcast, { force });
+      if (found.errors.length > 0) {
+        console.error(`  Errors: ${found.errors.join(', ')}`);
+        result.errors.push(...found.errors);
+        continue;
+      }
+      for (const ep of found.skipped) console.log(`  Skipping (matched skip pattern): ${ep.title}`);
+
+      if (found.newEpisodes.length === 0) {
+        console.log('  Up to date');
+      } else {
+        console.log(`  Found ${found.newEpisodes.length} new episode(s)`);
+        const download = await downloadNewEpisodes(podcast, found.newEpisodes);
+        result.downloaded = download.downloaded;
+        if (download.errors.length > 0) {
+          console.error(`  Download errors: ${download.errors.join(', ')}`);
+          result.errors.push(...download.errors);
+        }
+      }
+
+      // Runs even when the feed has nothing new, to push episodes an earlier run left on disk
+      if (yoto && podcast.cardId) {
+        const push = await pushNewEpisodes(yoto, podcast, result.downloaded, force);
+        result.pushed = push.pushed;
+        if (push.error) result.errors.push(push.error);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`  Check failed: ${msg}`);
+      notify(`Podcast: ${podcast.name}`, `Check failed: ${msg}`);
+      result.errors.push(msg);
+    }
+  }
+  return results;
 }
