@@ -155,6 +155,13 @@ export function addChapter(card: YotoCard, ch: NewChapter, at?: number): YotoCar
   return next;
 }
 
+// Sets every chapter's player number to its position, whatever it was before.
+export function renumberChapters(card: YotoCard): YotoCard {
+  const next = structuredClone(card);
+  renumber(next.content.chapters, true);
+  return next;
+}
+
 // Replaces every chapter and leaves the rest of the card as it was.
 export function replaceChapters(card: YotoCard, chapters: NewChapter[]): YotoCard {
   const next = structuredClone(card);

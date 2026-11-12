@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { AppConfig, PodcastConfig, FeedEpisode, YotoCard } from '../types.js';
 import { DEFAULT_ICON, type UploadedTrack } from '../services/yoto.js';
-import { addChapter } from '../services/card-edit.js';
+import { addChapter, renumberChapters } from '../services/card-edit.js';
 import { parseFeed, normalizeTitle, shouldSkip } from '../services/feed.js';
 import {
   getHighestEpisodeNumber,
@@ -160,7 +160,9 @@ async function pushNewEpisodes(
       const track = await yoto.uploadAudioFile(path);
       // Read again after the upload, which takes minutes, so the new chapter goes on the card as it is now
       const before = await yoto.getCard(podcast.cardId);
-      await yoto.saveIfUnchanged(before, addChapter(before, { title, track, icon: DEFAULT_ICON }, 1));
+      // Podcast cards are always numbered 1..n, so a gap left by a chapter deleted in the app is closed here
+      const after = renumberChapters(addChapter(before, { title, track, icon: DEFAULT_ICON }, 1));
+      await yoto.saveIfUnchanged(before, after);
       console.log(`  Pushed to card: ${title}`);
       pushed.push(title);
     }

@@ -188,6 +188,13 @@ describe('runCheck: pushing to the card', () => {
     expect(yoto.card().content.chapters.map((c) => c.overlayLabel)).toEqual(['1', '2', '3']);
   });
 
+  it('renumbers the whole card even when its numbers had a gap', async () => {
+    const yoto = fakeYoto('02 - Episode 2', '01 - Episode 1');
+    yoto.card().content.chapters[1].overlayLabel = '7';
+    await run(yoto);
+    expect(yoto.card().content.chapters.map((c) => c.overlayLabel)).toEqual(['1', '2', '3']);
+  });
+
   it('keeps the icons already on the card and gives only the new chapter the default', async () => {
     const yoto = fakeYoto('02 - Episode 2');
     await run(yoto);
