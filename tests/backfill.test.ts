@@ -68,6 +68,22 @@ describe('runBackfill', () => {
     expect(readdirSync(DIR).sort()).toEqual(['02 - Two.mp3', '03 - Four.mp3', '03 - Three.mp3']);
   });
 
+  it('takes only the newest episodes with a limit, numbered from 1', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      new Response(String(url).endsWith('feed.xml') ? feed(['Three', 'Two', 'One']) : 'audio')
+    );
+    await runBackfill({ feed: 'https://example.com/feed.xml', dir: DIR, name: 'Test', limit: 2 }, paths);
+    expect(readdirSync(DIR).sort()).toEqual(['01 - Two.mp3', '02 - Three.mp3']);
+  });
+
+  it('leaves out skipped episodes before applying the limit', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      new Response(String(url).endsWith('feed.xml') ? feed(['Three', 'Promo (Replay)', 'Two', 'One']) : 'audio')
+    );
+    await runBackfill({ feed: 'https://example.com/feed.xml', dir: DIR, name: 'Test', limit: 2, skip: ['(replay)'] }, paths);
+    expect(readdirSync(DIR).sort()).toEqual(['01 - Two.mp3', '02 - Three.mp3']);
+  });
+
   it('writes nothing on a dry run', async () => {
     const fetched: string[] = [];
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {

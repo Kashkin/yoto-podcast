@@ -1,4 +1,4 @@
-import { parseFeed, normalizeTitle } from '../services/feed.js';
+import { parseFeed, normalizeTitle, shouldSkip } from '../services/feed.js';
 import { formatFilename, detectPadWidth, downloadEpisode, getLocalEpisodes } from '../services/download.js';
 import { mkdirSync } from 'node:fs';
 import { notify } from '../services/notify.js';
@@ -14,6 +14,8 @@ interface BackfillOptions {
   dir: string;
   name: string;
   card?: string;
+  limit?: number;
+  skip?: string[];
   dryRun?: boolean;
 }
 
@@ -35,7 +37,7 @@ export async function pushToCard(yoto: CardApi, cardId: string, files: { title: 
 }
 
 export async function runBackfill(options: BackfillOptions, paths: Paths): Promise<void> {
-  const { feed, dir, name, card: cardId, dryRun = false } = options;
+  const { feed, dir, name, card: cardId, limit, skip = [], dryRun = false } = options;
 
   if (!dryRun) mkdirSync(dir, { recursive: true });
 
@@ -44,7 +46,7 @@ export async function runBackfill(options: BackfillOptions, paths: Paths): Promi
   if (!res.ok) throw new Error(`Failed to fetch feed: ${res.status}`);
 
   const xml = await res.text();
-  const episodes = parseFeed(xml);
+  const episodes = parseFeed(xml).filter((ep) => !shouldSkip(ep.title, skip)).slice(0, limit);
 
   if (episodes.length === 0) {
     throw new Error('No episodes found in feed');

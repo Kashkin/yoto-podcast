@@ -90,6 +90,8 @@ program
   .requiredOption('--dir <path>', 'Download directory')
   .requiredOption('--name <name>', 'Podcast name')
   .option('--card <cardId>', 'Yoto card ID')
+  .option('--limit <n>', 'Only the newest n episodes', (v) => Number(v))
+  .option('--skip <patterns...>', 'Leave out episodes whose title contains any of these (like skipPatterns)')
   .option('--dry-run', 'Show what would download and go on the card without writing', false)
   .action(async (options) => {
     await runBackfill(options, { configPath: CONFIG_PATH, tokensPath: TOKENS_PATH });
