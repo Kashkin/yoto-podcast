@@ -18,7 +18,7 @@ The home for Nick's [Yoto](https://yotoplay.com) work. Built for a single-user, 
 - Downloads new episodes to a local directory as `NN - Title.mp3` (zero-padded number, newest = highest).
 - Uploads each new file to Yoto, transcodes via the Yoto API, and prepends a chapter to the configured card so the newest episode is at the top.
 - Sends a macOS notification per new episode (via a small bundled `.app` so the notification gets a custom icon).
-- The filesystem is the source of truth — there is no database or state file. New episodes are detected by comparing the latest local filename against the feed.
+- The filesystem is the source of truth — there is no database or state file. New episodes are detected by comparing the latest local filename against the feed, and episodes to push by comparing local files against the highest-numbered chapter on the card.
 
 ## Requirements
 
@@ -262,6 +262,8 @@ src/
     check.ts              # poll feeds, download, push to Yoto
     backfill.ts           # full-catalogue download + card replace
     myo.ts                # MYO card/chapter/icon commands
+    labels.ts             # card label sheets + printed catalogue
+    fix-formats.ts        # patch each chapter's format label to its real codec
     prepare.ts            # album.json -> finished album in the library
   services/
     album.ts              # scan "NN - Title.mp3" folders, ID3 title fallback
@@ -270,6 +272,8 @@ src/
     icons.ts              # public icon search, yotoicons paste-in
     tinker.ts             # Tinker Icons search, usage limits, download and results sheet
     icon-library.ts       # your uploaded icons: pixel matching, contact sheet
+    icon-resolve.ts       # turn an icon reference into an uploaded icon
+    batch.ts              # run uploads a few at a time
     feed.ts               # RSS parse + skip-pattern + title normalize
     download.ts           # filename math + atomic download via .tmp
     yoto.ts               # Yoto SDK wrapper (upload, transcode poll, card edit, cover/icon upload)
@@ -296,6 +300,6 @@ npm run test:watch
 
 - macOS only.
 - Single-machine: no shared state, no remote queue.
-- One card per podcast.
+- One card per podcast, and a card holds at most 100 chapters.
 - MP3 only (the Yoto API transcodes it on its side).
 - No retry/backoff on transient feed or network errors — the next scheduled run picks them up.
