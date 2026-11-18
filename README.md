@@ -108,6 +108,16 @@ npx tsx src/cli.ts backfill \
 
 `backfill` downloads missing files only (files already there are matched by title, so re-runs are safe), then if `--card` is given, replaces the card's chapter list with the full catalogue (newest first) and resets the chapter icons. `--limit <n>` takes only the newest n episodes, for a catalogue too big for one card. `--skip <patterns...>` leaves out episodes the way `skipPatterns` does for `check`. Use it for first-time setup, and pass `--dry-run` first to see what it would download and put on the card.
 
+### Adding a podcast
+
+Dry-run each step that takes `--dry-run` first.
+
+1. Download the episodes: `backfill --feed <url> --dir "<library>/Podcasts/<Name>" --name "<Name>"`. Add `--limit 100` when the feed has more than 100 episodes, and `--skip` for trailers and cross-promotions.
+2. Make the card from a scratch folder holding a copy of one episode: `card create "<scratch>/<Name>" --title "<Name>" --cover cover.jpg`. It prints the card ID.
+3. Put every episode on it, newest first: the same `backfill` command with `--card <cardId>`.
+4. Add the podcast to `podcasts` in `~/.config/yoto-podcast/config.json` with that `cardId` and the same skip patterns.
+5. Run `check`; the new podcast should report "Up to date".
+
 ## Make Your Own cards
 
 Commands for any MYO card, not just podcasts. They use the same tokens as `check`. Chapters count from 1, as on the player.
