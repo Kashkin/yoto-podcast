@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { Command } from 'commander';
+import { Command, InvalidArgumentError } from 'commander';
 import { join } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { loadConfig, yotoLibrary } from './config.js';
@@ -90,7 +90,10 @@ program
   .requiredOption('--dir <path>', 'Download directory')
   .requiredOption('--name <name>', 'Podcast name')
   .option('--card <cardId>', 'Yoto card ID')
-  .option('--limit <n>', 'Only the newest n episodes', (v) => Number(v))
+  .option('--limit <n>', 'Only the newest n episodes', (v) => {
+    if (!/^[1-9]\d*$/.test(v)) throw new InvalidArgumentError('It must be a whole number above 0.');
+    return Number(v);
+  })
   .option('--skip <patterns...>', 'Leave out episodes whose title contains any of these (like skipPatterns)')
   .option('--dry-run', 'Show what would download and go on the card without writing', false)
   .action(async (options) => {

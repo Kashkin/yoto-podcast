@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { writeIconSheet } from './tinker.js';
 
 // Nick's own uploaded icons have no names, so duplicates are found by
 // comparing pixels. Yoto re-encodes uploads, so the bytes differ even when
@@ -95,6 +94,42 @@ export function duplicateGroups(keys: Map<string, string>): string[][] {
 }
 
 const escape = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+// A PNG of the icons at 4x on grey, ten to a row in the order given, for choosing by eye.
+// An icon that won't download or decode leaves an empty slot, so the rest keep their places.
+export async function writeIconSheet(urls: string[], out: string): Promise<void> {
+  const frames: Buffer[] = [];
+  for (let i = 0; i < urls.length; i += 10) {
+    frames.push(
+      ...(await Promise.all(
+        urls.slice(i, i + 10).map(async (url) => {
+          try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(String(res.status));
+            const decode = ['-i', 'pipe:0', '-frames:v', '1', '-vf', 'scale=16:16:flags=neighbor', '-f', 'rawvideo', '-pix_fmt', 'rgba', 'pipe:1'];
+            const rgba = await ffmpegPipe(decode, Buffer.from(await res.arrayBuffer()));
+            if (rgba.length !== 16 * 16 * 4) throw new Error('not one 16x16 frame');
+            return rgba;
+          } catch {
+            return Buffer.alloc(16 * 16 * 4);
+          }
+        })
+      ))
+    );
+  }
+  const cols = Math.min(urls.length, 10);
+  const rows = Math.ceil(urls.length / 10);
+  await ffmpegPipe(
+    [
+      '-y', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', '16x16', '-i', 'pipe:0',
+      '-filter_complex',
+      `[0]scale=64:64:flags=neighbor,pad=72:72:4:4:color=0xBBBBBB@0,tile=${cols}x${rows}:color=0xBBBBBB@0[t];` +
+        `color=c=0xBBBBBB:s=${cols * 72}x${rows * 72}[bg];[bg][t]overlay=shortest=1,format=rgb24`,
+      '-frames:v', '1', out,
+    ],
+    Buffer.concat(frames)
+  );
+}
 
 const newestFirst = (icons: UserIcon[]) => [...icons].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
 

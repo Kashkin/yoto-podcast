@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { normalisePixels, iconPixelKey, duplicateGroups, renderContactSheet, userIconKeys, writeIconSheets } from '../src/services/icon-library.js';
+import { normalisePixels, iconPixelKey, duplicateGroups, renderContactSheet, userIconKeys, writeIconSheet, writeIconSheets } from '../src/services/icon-library.js';
 
 const DIR = join(import.meta.dirname, '.test-icons');
 const ff = (...args: string[]) => execFileSync('ffmpeg', ['-v', 'error', '-y', ...args]);
@@ -76,6 +76,23 @@ describe('userIconKeys', () => {
     expect([...keys.keys()]).toEqual(['good']);
     vi.restoreAllMocks();
     delete process.env.YOTO_ICON_CACHE;
+  });
+});
+
+describe('writeIconSheet', () => {
+  it('leaves an empty slot for an icon that will not decode, so later icons keep their places', async () => {
+    const gold = readFileSync(join(DIR, 'gold.png'));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => new Response(String(url).includes('bad') ? 'not a picture' : gold));
+    const out = join(DIR, 'gap.png');
+
+    await writeIconSheet(['https://example.test/a.png', 'https://example.test/bad.png', 'https://example.test/c.png'], out);
+
+    const px = (x: number) => [...execFileSync('ffmpeg', ['-v', 'error', '-i', out, '-vf', `crop=1:1:${x}:36,format=rgb24`, '-f', 'rawvideo', '-'])];
+    // Blue is 0 in the gold icon and about 0xbb in the grey background
+    expect(px(36)[2]).toBeLessThan(16);
+    expect(px(108)[2]).toBeGreaterThan(0xb0);
+    expect(px(180)[2]).toBeLessThan(16);
+    vi.restoreAllMocks();
   });
 });
 

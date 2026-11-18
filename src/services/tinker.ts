@@ -1,8 +1,9 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { writeIconSheet } from './icon-library.js';
 
 // Tinker Icons (https://developers.tinker.audio/docs): 16x16 story icons, searched by name,
 // misspelling or meaning. The CDN needs no key.
@@ -104,28 +105,3 @@ export async function downloadTinkerIcon(id: string): Promise<Buffer> {
 }
 
 export const writeTinkerSheet = (icons: TinkerIcon[], out: string) => writeIconSheet(icons.map((i) => i.url), out);
-
-// A PNG of the icons at 4x on grey, ten to a row in the order given, for choosing by eye
-export async function writeIconSheet(urls: string[], out: string): Promise<void> {
-  const work = mkdtempSync(join(tmpdir(), 'yoto-tinker-sheet-'));
-  try {
-    await Promise.all(
-      urls.map(async (url, i) => {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Could not download ${url} (${res.status})`);
-        writeFileSync(join(work, `${String(i).padStart(3, '0')}.png`), Buffer.from(await res.arrayBuffer()));
-      })
-    );
-    const cols = Math.min(urls.length, 10);
-    const rows = Math.ceil(urls.length / 10);
-    await run('ffmpeg', [
-      '-v', 'error', '-y', '-start_number', '0', '-i', join(work, '%03d.png'),
-      '-filter_complex',
-      `[0]scale=64:64:flags=neighbor,pad=72:72:4:4:color=0xBBBBBB@0,tile=${cols}x${rows}:color=0xBBBBBB@0[t];` +
-        `color=c=0xBBBBBB:s=${cols * 72}x${rows * 72}[bg];[bg][t]overlay=shortest=1,format=rgb24`,
-      '-frames:v', '1', out,
-    ]);
-  } finally {
-    rmSync(work, { recursive: true, force: true });
-  }
-}
