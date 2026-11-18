@@ -287,7 +287,10 @@ YotoPodcast.app/          # AppleScript bundle for icon'd notifications
 ```bash
 npm test          # one-shot
 npm run test:watch
+npm run check     # typecheck, then tests
 ```
+
+`npm install` points git at `.githooks/`, whose pre-commit hook runs `npm run check`.
 
 ## Troubleshooting
 
