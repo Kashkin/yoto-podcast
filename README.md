@@ -114,8 +114,8 @@ Commands for any MYO card, not just podcasts. They use the same tokens as `check
 
 ```bash
 # Read
-npx tsx src/cli.ts card list
-npx tsx src/cli.ts card show <cardId>
+npx tsx src/cli.ts card list [--json]
+npx tsx src/cli.ts card show <cardId> [--json]   # --json prints the card as Yoto stores it
 npx tsx src/cli.ts icons search moon
 npx tsx src/cli.ts icons tinker "grey wolf" --sheet wolves.png   # Tinker Icons, plus a picture of the results
 npx tsx src/cli.ts icons mine [--sheet mine.png]   # your own uploaded icons, as an HTML contact sheet

@@ -115,12 +115,17 @@ function run(fn: (...args: any[]) => Promise<void>) {
 
 const card = program.command('card').description('List, show, create and edit MYO cards');
 
-card.command('list').description('List your MYO cards').action(run(() => myo.listCards(paths)));
+card
+  .command('list')
+  .description('List your MYO cards')
+  .option('--json', 'Print the cards as JSON')
+  .action(run((o) => myo.listCards(paths, o.json)));
 
 card
   .command('show <cardId>')
   .description('Show a card: title, cover, and each chapter with its length and icon')
-  .action(run((cardId) => myo.showCard(paths, cardId)));
+  .option('--json', 'Print the whole card as JSON')
+  .action(run((cardId, o) => myo.showCard(paths, cardId, o.json)));
 
 card
   .command('create <dir>')

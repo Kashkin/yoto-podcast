@@ -118,7 +118,7 @@ export async function refreshAccessToken(
 export async function getValidTokens(configPath: string, tokensPath: string): Promise<StoredTokens | null> {
   const tokens = loadTokens(tokensPath);
   if (!tokens || tokens.expiresAt >= Date.now() + 60000) return tokens;
-  console.log('Refreshing Yoto token...');
+  console.error('Refreshing Yoto token...');
   const refreshed = await refreshAccessToken(tokens.refreshToken, loadConfig(configPath).yoto.clientId);
   saveTokens(refreshed, tokensPath);
   return refreshed;

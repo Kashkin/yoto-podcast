@@ -63,15 +63,17 @@ async function editCard(
   console.log('Saved.');
 }
 
-export async function listCards(paths: Paths): Promise<void> {
+export async function listCards(paths: Paths, json = false): Promise<void> {
   const yoto = await connect(paths);
   const cards = await yoto.listCards();
+  if (json) return console.log(JSON.stringify(cards, null, 2));
   for (const c of cards) console.log(`${c.cardId}  ${c.title}`);
   console.log(`\n${cards.length} card(s)`);
 }
 
-export async function showCard(paths: Paths, cardId: string): Promise<void> {
+export async function showCard(paths: Paths, cardId: string, json = false): Promise<void> {
   const yoto = await connect(paths);
+  if (json) return console.log(JSON.stringify(await yoto.getCard(cardId), null, 2));
   const [card, icons] = await Promise.all([yoto.getCard(cardId), yoto.getPublicIcons()]);
   const iconNames = new Map(icons.map((i) => [`yoto:#${i.mediaId}`, i.title ?? '']));
   const iconName = (ref?: string) => (!ref ? '(none)' : iconNames.get(ref) ? `${iconNames.get(ref)} ${ref}` : `custom ${ref}`);
