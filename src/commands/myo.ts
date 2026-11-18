@@ -4,7 +4,7 @@ import { getValidTokens } from './auth.js';
 import { createYotoService, DEFAULT_ICON, imageType } from '../services/yoto.js';
 import { scanAlbum, titleFromFile } from '../services/album.js';
 import { searchIcons, formatIcon } from '../services/icons.js';
-import { userIconKeys, duplicateGroups, renderContactSheet } from '../services/icon-library.js';
+import { userIconKeys, duplicateGroups, renderContactSheet, writeIconSheets } from '../services/icon-library.js';
 import { resolveIcon } from '../services/icon-resolve.js';
 import { searchTinker, writeTinkerSheet } from '../services/tinker.js';
 import { uploadTracks, UPLOAD_CONCURRENCY } from '../services/batch.js';
@@ -217,7 +217,8 @@ export async function searchTinkerIcons(query: string, opts: { limit: number; sh
 }
 
 // Writes an HTML contact sheet of your uploaded icons and reports duplicates.
-export async function listMyIcons(paths: Paths, out: string): Promise<void> {
+// `sheet` also writes PNG pages and an index, for looking through them without a browser.
+export async function listMyIcons(paths: Paths, out: string, sheet?: string): Promise<void> {
   const yoto = await connect(paths);
   const icons = await yoto.getUserIcons();
   const groups = duplicateGroups(await userIconKeys(icons));
@@ -229,4 +230,9 @@ export async function listMyIcons(paths: Paths, out: string): Promise<void> {
   }
   console.log(`Contact sheet: ${out}`);
   console.log(`Open it with: open "${out}"`);
+  if (sheet && icons.length) {
+    const files = await writeIconSheets(icons, sheet);
+    console.log(`Sheets, newest first, 100 to a page and ten to a row: ${files.slice(0, -1).join(', ')}`);
+    console.log(`Index (page row column icon): ${files.at(-1)}`);
+  }
 }

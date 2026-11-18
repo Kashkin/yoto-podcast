@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { writeIconSheet } from './tinker.js';
 
 // Nick's own uploaded icons have no names, so duplicates are found by
 // comparing pixels. Yoto re-encodes uploads, so the bytes differ even when
@@ -95,10 +96,29 @@ export function duplicateGroups(keys: Map<string, string>): string[][] {
 
 const escape = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
+const newestFirst = (icons: UserIcon[]) => [...icons].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+
+// PNG pages of 100 icons (newest first, ten to a row) named <base>-<page>.png, and
+// <base>.txt saying which icon is at each page, row and column. Returns the files.
+export async function writeIconSheets(icons: UserIcon[], base: string): Promise<string[]> {
+  const stem = base.replace(/\.png$/i, '');
+  const sorted = newestFirst(icons);
+  const pages: string[] = [];
+  for (let p = 0; p * 100 < sorted.length; p++) {
+    pages.push(`${stem}-${p + 1}.png`);
+    await writeIconSheet(sorted.slice(p * 100, p * 100 + 100).map((i) => i.url), pages[p]);
+  }
+  const lines = sorted.map(
+    (icon, i) => `${Math.floor(i / 100) + 1} ${Math.floor((i % 100) / 10) + 1} ${(i % 10) + 1} yoto:#${icon.mediaId} ${(icon.createdAt ?? '').slice(0, 10)}`
+  );
+  writeFileSync(`${stem}.txt`, ['page row column icon added', ...lines].join('\n') + '\n');
+  return [...pages, `${stem}.txt`];
+}
+
 // A page to pick icons by sight: newest first, click to copy the reference.
 export function renderContactSheet(icons: UserIcon[], duplicates: string[][]): string {
   const dupOf = new Map(duplicates.flatMap((ids, g) => ids.map((id) => [id, g + 1] as const)));
-  const sorted = [...icons].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+  const sorted = newestFirst(icons);
   const tiles = sorted
     .map((icon) => {
       const ref = `yoto:#${icon.mediaId}`;

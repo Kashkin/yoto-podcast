@@ -118,7 +118,7 @@ npx tsx src/cli.ts card list
 npx tsx src/cli.ts card show <cardId>
 npx tsx src/cli.ts icons search moon
 npx tsx src/cli.ts icons tinker "grey wolf" --sheet wolves.png   # Tinker Icons, plus a picture of the results
-npx tsx src/cli.ts icons mine        # your own uploaded icons, as an HTML contact sheet
+npx tsx src/cli.ts icons mine [--sheet mine.png]   # your own uploaded icons, as an HTML contact sheet
 
 # Create: one chapter per "NN - Title.mp3", ordered by NN.
 # Title defaults to the folder name; ID3 title is used if a file name has no title.
@@ -148,7 +148,7 @@ Every edit fetches the card, changes only what was asked, prints the change, the
 - Tinker gives each app 30 searches a minute, 150 an hour, 500 a day and 5,000 results a day, over rolling windows. Every search counts its `--limit` (default 12) against the results, so the default allows about 400 searches a day and `--limit 100` only 50. `icons tinker` keeps its own count in `~/Library/Caches/yoto-podcast/tinker-usage.json` and stops before a limit, saying when there's room again, rather than letting Tinker refuse.
 - Chapter numbers on the player are renumbered after add/remove/move, unless the card uses custom labels.
 - Uploading a PNG, yotoicons or Tinker icon first checks your icon library pixel by pixel and reuses a match instead of uploading a duplicate.
-- `icons mine` writes a contact sheet of your uploaded icons (newest first, click to copy `yoto:#<id>`) and flags any picture uploaded twice.
+- `icons mine` writes a contact sheet of your uploaded icons (newest first, click to copy `yoto:#<id>`) and flags any picture uploaded twice. `--sheet mine.png` also writes them as pictures, 100 to a page and ten to a row (`mine-1.png`, `mine-2.png`, ...), with `mine.txt` listing the page, row, column and `yoto:#<id>` of each.
 - When the album folder has an `album.json` (see [Albums](#albums)), `card create` takes chapter titles and `yotoIcon`s from it, skips `leaveOff` tracks, and uses the cover from `Cover images/`.
 - After creating a card, link it to a physical MYO card in the Yoto app.
 

@@ -214,7 +214,8 @@ icons
   .command('mine')
   .description('List your uploaded icons as an HTML contact sheet, flagging duplicates')
   .option('--out <file>', 'Where to write the page', join(tmpdir(), 'yoto-my-icons.html'))
-  .action(run((o) => myo.listMyIcons(paths, o.out)));
+  .option('--sheet <png>', 'Also write pictures of them (<png>-1.png, -2.png, ...) and an index of where each icon is')
+  .action(run((o) => myo.listMyIcons(paths, o.out, o.sheet)));
 
 const labelPaths = () => ({ covers: join(yotoLibrary(), 'Cover images'), labels: join(yotoLibrary(), 'Labels') });
 const labels = program.command('labels').description('Print sheets of card labels and track which cards have one (Labels/catalogue.json)');

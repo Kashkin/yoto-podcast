@@ -103,19 +103,21 @@ export async function downloadTinkerIcon(id: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
-// A PNG of the icons at 4x on grey, ten to a row in result order, for choosing by eye
-export async function writeTinkerSheet(icons: TinkerIcon[], out: string): Promise<void> {
+export const writeTinkerSheet = (icons: TinkerIcon[], out: string) => writeIconSheet(icons.map((i) => i.url), out);
+
+// A PNG of the icons at 4x on grey, ten to a row in the order given, for choosing by eye
+export async function writeIconSheet(urls: string[], out: string): Promise<void> {
   const work = mkdtempSync(join(tmpdir(), 'yoto-tinker-sheet-'));
   try {
     await Promise.all(
-      icons.map(async (icon, i) => {
-        const res = await fetch(icon.url);
-        if (!res.ok) throw new Error(`Could not download ${icon.url} (${res.status})`);
+      urls.map(async (url, i) => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Could not download ${url} (${res.status})`);
         writeFileSync(join(work, `${String(i).padStart(3, '0')}.png`), Buffer.from(await res.arrayBuffer()));
       })
     );
-    const cols = Math.min(icons.length, 10);
-    const rows = Math.ceil(icons.length / 10);
+    const cols = Math.min(urls.length, 10);
+    const rows = Math.ceil(urls.length / 10);
     await run('ffmpeg', [
       '-v', 'error', '-y', '-start_number', '0', '-i', join(work, '%03d.png'),
       '-filter_complex',
